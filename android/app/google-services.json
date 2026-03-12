@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "406657805549",
+    "project_id": "level-maxing",
+    "storage_bucket": "level-maxing.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:406657805549:android:6529a17e61f89c6fdb30e4",
+        "android_client_info": {
+          "package_name": "com.example.level_maxing"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "406657805549-n3hc9ack1odil805pakhma5h21vec4c8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.level_maxing",
+            "certificate_hash": "fa4c65758ac699f9ac9089d637f888d31535fee7"
+          }
+        },
+        {
+          "client_id": "406657805549-jt2esapbn2i13an68qma6u3q4su3ru0f.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBX7ArBnNh3Rc_lEAp2t_Wx2wzD6qg8_LY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "406657805549-jt2esapbn2i13an68qma6u3q4su3ru0f.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
