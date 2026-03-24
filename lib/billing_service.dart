@@ -15,8 +15,8 @@ class BillingService extends ChangeNotifier {
 
   // ✅ These MUST match exactly what you created in Google Play Console
   static const String monthlyId = 'premium_monthly';
-  static const String sixMonthsId = 'premium_6_months';
-  static const String yearlyId = 'premium_12_months';
+  static const String sixMonthsId = 'sixmonth_1499';
+  static const String yearlyId = 'yearly_2799';
 
   final List<String> _productIds = [monthlyId, sixMonthsId, yearlyId];
 
