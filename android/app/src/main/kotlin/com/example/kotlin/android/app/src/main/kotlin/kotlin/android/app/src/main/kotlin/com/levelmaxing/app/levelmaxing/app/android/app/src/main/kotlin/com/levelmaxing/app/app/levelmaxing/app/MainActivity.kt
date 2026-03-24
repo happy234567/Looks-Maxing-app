@@ -1,4 +1,4 @@
-package com.example.level_maxing
+package com.levelmaxing.app
 
 import io.flutter.embedding.android.FlutterActivity
 

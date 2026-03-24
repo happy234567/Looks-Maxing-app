@@ -3,7 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'login_screen.dart';
-import 'billing_service.dart'; // import the billing service
+import 'billing_service.dart';
+import 'notification_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -24,9 +25,8 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     _loadProfile();
     _billingService.addListener(_onBillingUpdated);
-    // ensure available status
     if (!_billingService.isAvailable) {
-       _billingService.initialize();
+      _billingService.initialize();
     }
   }
 
@@ -56,26 +56,38 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Sign Out',
-            style: TextStyle(color: Colors.white)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(children: [
+          Icon(Icons.logout, color: Color(0xFFFFD700), size: 22),
+          SizedBox(width: 10),
+          Text('Sign Out', style: TextStyle(color: Colors.white)),
+        ]),
         content: const Text('Are you sure you want to sign out?',
-            style: TextStyle(color: Colors.white70)),
+            style: TextStyle(color: Colors.white70, height: 1.5)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel',
                 style: TextStyle(color: Colors.white54)),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFD700),
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
             child: const Text('Sign Out',
-                style: TextStyle(color: Color(0xFFFFD700))),
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
 
     if (confirm == true) {
+      await NotificationService.removeTokenOnLogout();
       await GoogleSignIn().signOut();
       await FirebaseAuth.instance.signOut();
       if (!mounted) return;
@@ -88,27 +100,121 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _deleteAccount() async {
+    // Step 1 — confirmation dialog with type DELETE
+    final TextEditingController _deleteController = TextEditingController();
+    bool _isTypedCorrectly = false;
+
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Delete Account',
-            style: TextStyle(color: Colors.red)),
-        content: const Text(
-            'This will permanently delete your account and all scan history. This cannot be undone!',
-            style: TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.white54)),
+      barrierDismissible: false,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          title: const Row(children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24),
+            SizedBox(width: 10),
+            Text('Delete Account',
+                style:
+                    TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Do you really want to delete your account?',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This will permanently delete your account and all scan history. This cannot be undone!',
+                style: TextStyle(
+                    color: Colors.white54, fontSize: 13, height: 1.5),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'To confirm, type DELETE below:',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _deleteController,
+                      autofocus: true,
+                      style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 2),
+                      decoration: InputDecoration(
+                        hintText: 'Type DELETE here',
+                        hintStyle: TextStyle(
+                            color: Colors.white24, letterSpacing: 1),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.05),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide:
+                              BorderSide(color: Colors.red.withOpacity(0.4)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Colors.red),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(
+                              color: Colors.red.withOpacity(0.3)),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                      ),
+                      onChanged: (val) {
+                        setDialogState(() {
+                          _isTypedCorrectly = val.trim() == 'DELETE';
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete',
-                style: TextStyle(color: Colors.red)),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: _isTypedCorrectly
+                  ? () => Navigator.pop(context, true)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.red.withOpacity(0.3),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Delete Forever',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -129,6 +235,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final isPremium = _billingService.isPremium;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -137,147 +244,317 @@ class _ProfilePageState extends State<ProfilePage> {
         title: const Text('Profile',
             style: TextStyle(color: Color(0xFFFFD700))),
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios,
+              color: Color(0xFFFFD700), size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const SizedBox(height: 20),
-
-            // Profile picture
-            CircleAvatar(
-              radius: 50,
-              backgroundColor: const Color(0xFFFFD700),
-              backgroundImage: user?.photoURL != null
-                  ? NetworkImage(user!.photoURL!)
-                  : null,
-              child: user?.photoURL == null
-                  ? Text(
-                      _firstName.isNotEmpty
-                          ? _firstName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                          fontSize: 40,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black),
-                    )
-                  : null,
-            ),
-            const SizedBox(height: 16),
-            Text(_username,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold)),
-            if (_billingService.isPremium) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD700).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFFFD700), width: 1.5)
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 18),
-                    SizedBox(width: 6),
-                    Text('Premium Member', 
-                      style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold, fontSize: 12))
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 6),
-            Text(_email,
-                style: const TextStyle(
-                    color: Colors.white54, fontSize: 14)),
-            const SizedBox(height: 30),
-
-            // Info cards
+            // ── Header Banner ──
             Container(
-              padding: const EdgeInsets.all(20),
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 32, 20, 28),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(16),
+                color: const Color(0xFF111111),
+                border: Border(
+                    bottom: BorderSide(
+                        color: const Color(0xFFFFD700).withOpacity(0.15),
+                        width: 1)),
               ),
               child: Column(
                 children: [
-                  _buildInfoRow(Icons.person, 'Full Name', _username),
-                  const Divider(color: Colors.white12),
-                  _buildInfoRow(Icons.email, 'Email', _email),
-                  const Divider(color: Colors.white12),
-                  _buildInfoRow(
-                      _gender == 'Male' ? Icons.male : Icons.female,
-                      'Gender',
-                      _gender),
+                  // Avatar with glow
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFFFD700).withOpacity(0.3),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 52,
+                      backgroundColor: const Color(0xFFFFD700),
+                      backgroundImage: user?.photoURL != null
+                          ? NetworkImage(user!.photoURL!)
+                          : null,
+                      child: user?.photoURL == null
+                          ? Text(
+                              _firstName.isNotEmpty
+                                  ? _firstName[0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                  fontSize: 42,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black),
+                            )
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _username,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _email,
+                    style: const TextStyle(
+                        color: Colors.white38, fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  // Premium / Free badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isPremium
+                          ? const Color(0xFFFFD700).withOpacity(0.15)
+                          : Colors.white.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isPremium
+                            ? const Color(0xFFFFD700)
+                            : Colors.white24,
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isPremium
+                              ? Icons.workspace_premium
+                              : Icons.person_outline,
+                          color: isPremium
+                              ? const Color(0xFFFFD700)
+                              : Colors.white54,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isPremium ? 'Premium Member' : 'Free Member',
+                          style: TextStyle(
+                            color: isPremium
+                                ? const Color(0xFFFFD700)
+                                : Colors.white54,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
 
-            // Sign out button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _signOut,
-                icon: const Icon(Icons.logout, color: Color(0xFFFFD700)),
-                label: const Text('Sign Out',
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Account Info ──
+                  const Text(
+                    'ACCOUNT INFO',
                     style: TextStyle(
-                        color: Color(0xFFFFD700), fontSize: 16)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFFFD700)),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF141414),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.07)),
+                    ),
+                    child: Column(
+                      children: [
+                        _infoTile(
+                          icon: Icons.person_outline,
+                          label: 'Full Name',
+                          value: _username,
+                        ),
+                        _divider(),
+                        _infoTile(
+                          icon: Icons.email_outlined,
+                          label: 'Email',
+                          value: _email,
+                        ),
+                        _divider(),
+                        _infoTile(
+                          icon: _gender == 'Male'
+                              ? Icons.male
+                              : Icons.female,
+                          label: 'Gender',
+                          value: _gender.isNotEmpty ? _gender : '—',
+                        ),
+                        _divider(),
+                        _infoTile(
+                          icon: Icons.shield_outlined,
+                          label: 'Account Status',
+                          value: isPremium ? 'Premium' : 'Free',
+                          valueColor: isPremium
+                              ? const Color(0xFFFFD700)
+                              : Colors.white54,
+                        ),
+                      ],
+                    ),
+                  ),
 
-            // Delete account button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _deleteAccount,
-                icon: const Icon(Icons.delete_forever, color: Colors.red),
-                label: const Text('Delete Account',
-                    style: TextStyle(color: Colors.red, fontSize: 16)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30)),
-                ),
+                  const SizedBox(height: 28),
+
+                  // ── Account Actions ──
+                  const Text(
+                    'ACCOUNT ACTIONS',
+                    style: TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Sign Out
+                  _actionButton(
+                    icon: Icons.logout_rounded,
+                    label: 'Sign Out',
+                    color: const Color(0xFFFFD700),
+                    onTap: _signOut,
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Delete Account
+                  _actionButton(
+                    icon: Icons.delete_forever_rounded,
+                    label: 'Delete Account',
+                    color: Colors.red,
+                    onTap: _deleteAccount,
+                    isDestructive: true,
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // ── App info ──
+                  Center(
+                    child: Column(
+                      children: [
+                        const Text('Level Maxing',
+                            style: TextStyle(
+                                color: Colors.white24, fontSize: 12)),
+                        const SizedBox(height: 2),
+                        const Text('v1.0.0',
+                            style: TextStyle(
+                                color: Colors.white12, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
               ),
             ),
-            const SizedBox(height: 30),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
+  Widget _divider() =>
+      const Divider(height: 1, color: Colors.white10, indent: 56);
+
+  Widget _infoTile({
+    required IconData icon,
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFFFFD700), size: 22),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: const TextStyle(
-                      color: Colors.white54, fontSize: 12)),
-              Text(value,
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 16)),
-            ],
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFD700).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: const Color(0xFFFFD700), size: 18),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text(value,
+                    style: TextStyle(
+                        color: valueColor ?? Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          color: isDestructive
+              ? Colors.red.withOpacity(0.06)
+              : color.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDestructive
+                ? Colors.red.withOpacity(0.3)
+                : color.withOpacity(0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(width: 14),
+            Text(
+              label,
+              style: TextStyle(
+                  color: color,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600),
+            ),
+            const Spacer(),
+            Icon(Icons.chevron_right, color: color.withOpacity(0.5), size: 20),
+          ],
+        ),
       ),
     );
   }

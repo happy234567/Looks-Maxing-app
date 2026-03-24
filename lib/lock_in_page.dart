@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'lock_in_notification_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -485,6 +486,28 @@ class _LockInPageState extends State<LockInPage> {
   Future<void> _loadData() async {
     final d = await _load();
     setState(() { _data = d; _loading = false; });
+
+    // Schedule today's Lock In notifications if data exists
+    if (d != null) {
+      final today = DateTime.now();
+      final todayLog = d.days.where((day) {
+        final dd = day.date;
+        return dd.year == today.year &&
+            dd.month == today.month &&
+            dd.day == today.day;
+      }).toList();
+
+      final currentDay = d.currentDayNumber;
+      final customTasks = d.tasksForDay(currentDay);
+      final rate = todayLog.isNotEmpty
+          ? todayLog.first.completionRate(customTasks.length)
+          : 0.0;
+
+      await LockInNotificationService.scheduleTodayNotifications(
+        dayNumber: currentDay,
+        completionRate: rate,
+      );
+    }
   }
 
   void _onStart(WeeklyConfig config) async {
@@ -1170,10 +1193,6 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // --- TESTING OVERRIDE: FORCE PREMIUM ---
-    data.isPremiumUser = true;
-    data.premiumStartDate ??= DateTime.now().subtract(const Duration(days: 3));
-    // ---------------------------------------
 
     final currentDay = data.currentDayNumber;
     final totalVisible = currentDay + 1;
@@ -1448,6 +1467,10 @@ class _DayScreenState extends State<_DayScreen> {
   void _doSave() async {
     HapticFeedback.mediumImpact();
     widget.onSave(_log);
+    // Cancel notifications if day is fully complete
+    if (_rate >= 1.0) {
+      await LockInNotificationService.cancelAll();
+    }
 
     // ── Giveaway Eligibility Check ──
     final pDay = widget.lockInData.calculatePremiumDay();

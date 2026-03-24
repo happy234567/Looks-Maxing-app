@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
@@ -12,9 +11,9 @@ class BillingService extends ChangeNotifier {
   BillingService._internal();
 
   final InAppPurchase _inAppPurchase = InAppPurchase.instance;
-  late StreamSubscription<List<PurchaseDetails>> _subscription;
+  StreamSubscription<List<PurchaseDetails>>? _subscription;
 
-  // The Exact Product IDs from Google Play Console
+  // ✅ These MUST match exactly what you created in Google Play Console
   static const String monthlyId = 'premium_monthly';
   static const String sixMonthsId = 'premium_6_months';
   static const String yearlyId = 'premium_12_months';
@@ -23,72 +22,85 @@ class BillingService extends ChangeNotifier {
 
   bool isAvailable = false;
   List<ProductDetails> products = [];
-  bool isPremium = false; // We also check Firebase for this
+  bool isPremium = false;
+  bool isLoading = false;
 
   Future<void> initialize() async {
     isAvailable = await _inAppPurchase.isAvailable();
     if (!isAvailable) {
-      debugPrint("Store is not available.");
+      debugPrint('Store is not available.');
       return;
     }
 
-    // Set up the listener for incoming purchases (both new and restoring)
-    final Stream<List<PurchaseDetails>> purchaseUpdated = _inAppPurchase.purchaseStream;
-    _subscription = purchaseUpdated.listen((purchaseDetailsList) {
-      _listenToPurchaseUpdated(purchaseDetailsList);
-    }, onDone: () {
-      _subscription.cancel();
-    }, onError: (error) {
-      debugPrint("Purchase Stream Error: $error");
-    });
+    // Cancel any existing subscription before creating a new one
+    await _subscription?.cancel();
 
-    // Fetch the products from Google Play
+    final Stream<List<PurchaseDetails>> purchaseUpdated =
+        _inAppPurchase.purchaseStream;
+
+    _subscription = purchaseUpdated.listen(
+      (purchaseDetailsList) {
+        _listenToPurchaseUpdated(purchaseDetailsList);
+      },
+      onDone: () {
+        _subscription?.cancel();
+      },
+      onError: (error) {
+        debugPrint('Purchase Stream Error: $error');
+      },
+    );
+
     await _loadProducts();
-    
-    // Also check current status from Firebase
     await _checkPremiumStatusFirebase();
   }
 
   Future<void> _loadProducts() async {
-    final ProductDetailsResponse response = await _inAppPurchase.queryProductDetails(_productIds.toSet());
+    final ProductDetailsResponse response =
+        await _inAppPurchase.queryProductDetails(_productIds.toSet());
+
+    if (response.notFoundIDs.isNotEmpty) {
+      debugPrint('Products NOT found in Play Console: ${response.notFoundIDs}');
+    }
+
     if (response.error == null) {
       products = response.productDetails;
-      // Sort so they appear in a logical order (assuming string sorting or logical mapping)
-      // Usually, Google returns them in whatever order. We can map them in UI carefully.
       notifyListeners();
     } else {
-      debugPrint("Error loading products from Store: ${response.error!.message}");
+      debugPrint('Error loading products: ${response.error!.message}');
     }
   }
 
-  // Trigger the actual purchase UI
+  // ✅ Fixed: uses GooglePlayPurchaseParam for subscriptions
   Future<void> buySubscription(ProductDetails productDetails) async {
-    final PurchaseParam purchaseParam = PurchaseParam(productDetails: productDetails);
-    
-    // Specifically mapping to Google Play logic (consumable vs non_consumable vs subscription)
-    // Auto-renewing subscriptions shouldn't be consumed.
-    await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+    try {
+      final GooglePlayPurchaseParam purchaseParam = GooglePlayPurchaseParam(
+        productDetails: productDetails,
+      );
+      await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+    } catch (e) {
+      debugPrint('Error starting purchase: $e');
+    }
   }
 
   Future<void> restorePurchases() async {
     await _inAppPurchase.restorePurchases();
   }
 
-  void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) {
+  void _listenToPurchaseUpdated(
+      List<PurchaseDetails> purchaseDetailsList) {
     for (final PurchaseDetails purchaseDetails in purchaseDetailsList) {
       if (purchaseDetails.status == PurchaseStatus.pending) {
-        // Show pending UI
+        debugPrint('Purchase pending...');
       } else {
         if (purchaseDetails.status == PurchaseStatus.error) {
-          debugPrint("Purchase error: ${purchaseDetails.error}");
+          debugPrint('Purchase error: ${purchaseDetails.error}');
         } else if (purchaseDetails.status == PurchaseStatus.purchased ||
-                   purchaseDetails.status == PurchaseStatus.restored) {
-          
-          bool valid = _verifyPurchase(purchaseDetails);
-          if (valid) {
-            _deliverProduct(purchaseDetails);
-          }
+            purchaseDetails.status == PurchaseStatus.restored) {
+          _deliverProduct(purchaseDetails);
+        } else if (purchaseDetails.status == PurchaseStatus.canceled) {
+          debugPrint('Purchase canceled by user.');
         }
+
         if (purchaseDetails.pendingCompletePurchase) {
           _inAppPurchase.completePurchase(purchaseDetails);
         }
@@ -96,19 +108,9 @@ class BillingService extends ChangeNotifier {
     }
   }
 
-  bool _verifyPurchase(PurchaseDetails purchaseDetails) {
-    // In a real production app, you would send the purchase token to a secure backend 
-    // to verify with Google Play Developer API so people don't spoof purchases.
-    // For this implementation, we trust the client-side signal.
-    return true; 
-  }
-
   Future<void> _deliverProduct(PurchaseDetails purchaseDetails) async {
-    // Subscription purchased successfully!
     isPremium = true;
     notifyListeners();
-
-    // Securely save this to Firebase so their account is permanently marked Premium
     await _updatePremiumStatusInFirebase(true);
   }
 
@@ -116,12 +118,15 @@ class BillingService extends ChangeNotifier {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .set({
           'isPremium': premium,
           'premiumUpdated': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (e) {
-        debugPrint("Error updating Premium status in DB: $e");
+        debugPrint('Error updating premium in Firebase: $e');
       }
     }
   }
@@ -130,20 +135,25 @@ class BillingService extends ChangeNotifier {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        if (doc.exists && doc.data()!.containsKey('isPremium') && doc.data()!['isPremium'] == true) {
-             isPremium = true;
-             notifyListeners();
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (doc.exists &&
+            doc.data()!.containsKey('isPremium') &&
+            doc.data()!['isPremium'] == true) {
+          isPremium = true;
+          notifyListeners();
         }
       } catch (e) {
-         debugPrint("Error checking Firebase premium status: $e");
+        debugPrint('Error checking Firebase premium: $e');
       }
     }
   }
 
   @override
   void dispose() {
-    _subscription.cancel();
+    _subscription?.cancel();
     super.dispose();
   }
 }

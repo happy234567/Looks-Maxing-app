@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:level_maxing/guide_content.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GUIDE PAGE UI
-// ─────────────────────────────────────────────────────────────────────────────
-
 class GuidePage extends StatefulWidget {
   const GuidePage({super.key});
 
@@ -51,44 +47,6 @@ class _GuidePageState extends State<GuidePage>
     );
   }
 
-  void _showPremiumDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [
-          Text('🔒', style: TextStyle(fontSize: 24)),
-          SizedBox(width: 10),
-          Text('Premium Content',
-              style: TextStyle(color: Colors.white, fontSize: 18)),
-        ]),
-        content: const Text(
-          'This guide is available for premium members.\n\nUpgrade to unlock all guides, advanced routines, and expert tips.',
-          style: TextStyle(color: Colors.white54, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Not Now',
-                style: TextStyle(color: Colors.white38)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFD700),
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('Upgrade',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -98,7 +56,6 @@ class _GuidePageState extends State<GuidePage>
         child: SafeArea(
           child: CustomScrollView(
             slivers: [
-              // ── Simple Title Header ──────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
@@ -115,13 +72,10 @@ class _GuidePageState extends State<GuidePage>
                   ),
                 ),
               ),
-
-              // ── Body content ──────────────────────────────────────────────
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    // Premium Banner
                     _premiumBanner(),
                     const SizedBox(height: 28),
 
@@ -139,13 +93,8 @@ class _GuidePageState extends State<GuidePage>
 
                     const SizedBox(height: 28),
 
-                    // Premium Guides Section
-                    _sectionHeader(
-                      tag: '👑',
-                      title: 'Premium Guides',
-                      isPremium: true,
-                      showComingSoon: true,
-                    ),
+                    // Premium Guides Section Header
+                    _premiumSectionHeader(),
                     const SizedBox(height: 12),
                     ...premiumArticles.map((a) => _ArticleCard(
                           article: a,
@@ -160,6 +109,85 @@ class _GuidePageState extends State<GuidePage>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _premiumSectionHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFFFD700).withOpacity(0.35),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFD700).withOpacity(0.15),
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: const Color(0xFFFFD700).withOpacity(0.4)),
+            ),
+            child: const Center(
+                child: Text('👑', style: TextStyle(fontSize: 20))),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Premium Guides',
+                  style: TextStyle(
+                    color: Color(0xFFFFD700),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Exclusive guides for premium members',
+                  style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFD700).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: const Color(0xFFFFD700).withOpacity(0.4)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.lock_outline_rounded,
+                    color: Color(0xFFFFD700), size: 12),
+                SizedBox(width: 4),
+                Text(
+                  'Locked',
+                  style: TextStyle(
+                      color: Color(0xFFFFD700),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -184,6 +212,13 @@ class _GuidePageState extends State<GuidePage>
             color: const Color(0xFFFFD700).withOpacity(0.5),
             width: 1.2,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFFD700).withOpacity(0.08),
+              blurRadius: 16,
+              spreadRadius: 1,
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -219,7 +254,6 @@ class _GuidePageState extends State<GuidePage>
               ],
             ),
             const SizedBox(height: 14),
-            // CTA Button
             Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -379,6 +413,8 @@ class _ArticleCardState extends State<_ArticleCard> {
   @override
   Widget build(BuildContext context) {
     final a = widget.article;
+    final isPremium = a.isPremium;
+
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressed = true),
       onTapUp: (_) {
@@ -393,13 +429,34 @@ class _ArticleCardState extends State<_ArticleCard> {
           duration: const Duration(milliseconds: 100),
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
-            color: _pressed
-                ? const Color(0xFF1C1C1C)
-                : const Color(0xFF141414),
+            // Premium cards get a dark gold tint background
+            color: isPremium
+                ? const Color(0xFF181818)
+                : (_pressed ? const Color(0xFF1C1C1C) : const Color(0xFF141414)),
             borderRadius: BorderRadius.circular(16),
+            // Glowing gold border for premium, subtle white for free
             border: Border.all(
-              color: Colors.white.withOpacity(_pressed ? 0.1 : 0.06),
+              color: isPremium
+                  ? const Color(0xFFFFD700).withOpacity(_pressed ? 0.8 : 0.55)
+                  : Colors.white.withOpacity(_pressed ? 0.1 : 0.06),
+              width: isPremium ? 1.5 : 1,
             ),
+            // Glow shadow only for premium
+            boxShadow: isPremium
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFFFFD700).withOpacity(0.15),
+                      blurRadius: 12,
+                      spreadRadius: 0,
+                      offset: const Offset(0, 2),
+                    ),
+                    BoxShadow(
+                      color: const Color(0xFFFFD700).withOpacity(0.06),
+                      blurRadius: 24,
+                      spreadRadius: 2,
+                    ),
+                  ]
+                : null,
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -409,8 +466,15 @@ class _ArticleCardState extends State<_ArticleCard> {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
+                  color: isPremium
+                      ? const Color(0xFF222222)
+                      : const Color(0xFF1E1E1E),
                   borderRadius: BorderRadius.circular(13),
+                  border: isPremium
+                      ? Border.all(
+                          color: const Color(0xFFFFD700).withOpacity(0.2),
+                          width: 1)
+                      : null,
                 ),
                 child: Center(
                   child: Text(a.emoji,
@@ -423,10 +487,35 @@ class _ArticleCardState extends State<_ArticleCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Premium badge above title
+                    if (isPremium) ...[
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 5),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFD700).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                              color:
+                                  const Color(0xFFFFD700).withOpacity(0.3),
+                              width: 0.8),
+                        ),
+                        child: const Text(
+                          '👑 PREMIUM',
+                          style: TextStyle(
+                            color: Color(0xFFFFD700),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                    ],
                     Text(
                       a.title,
                       style: TextStyle(
-                        color: a.isPremium
+                        color: isPremium
                             ? const Color(0xFFFFD700)
                             : Colors.white,
                         fontWeight: FontWeight.w700,
@@ -448,14 +537,28 @@ class _ArticleCardState extends State<_ArticleCard> {
               ),
               const SizedBox(width: 10),
               // Arrow or Lock
-              Icon(
-                a.isPremium
-                    ? Icons.lock_outline_rounded
-                    : Icons.chevron_right_rounded,
-                color: a.isPremium
-                    ? const Color(0xFFFFD700).withOpacity(0.6)
-                    : Colors.white30,
-                size: a.isPremium ? 20 : 22,
+              Container(
+                width: 32,
+                height: 32,
+                decoration: isPremium
+                    ? BoxDecoration(
+                        color: const Color(0xFFFFD700).withOpacity(0.1),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: const Color(0xFFFFD700).withOpacity(0.3)),
+                      )
+                    : null,
+                child: Center(
+                  child: Icon(
+                    isPremium
+                        ? Icons.lock_outline_rounded
+                        : Icons.chevron_right_rounded,
+                    color: isPremium
+                        ? const Color(0xFFFFD700)
+                        : Colors.white30,
+                    size: isPremium ? 16 : 22,
+                  ),
+                ),
               ),
             ]),
           ),

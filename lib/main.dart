@@ -12,31 +12,33 @@ import 'lock_in_page.dart';
 import 'shop_page.dart';
 import 'guide_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'billing_service.dart'; // Import BillingService
+import 'billing_service.dart';
+import 'notification_service.dart';
+import 'lock_in_notification_service.dart'; // ← NEW
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  
+  await NotificationService.initialize();
+  await LockInNotificationService.initialize(); // ← NEW
+
   final user = FirebaseAuth.instance.currentUser;
-  
+
   Widget initialScreen = const LoginScreen();
-  
+
   if (user != null) {
-    // Check if profile exists in Firestore
     final doc = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .get();
-    
+
     if (doc.exists) {
-      // Load profile data to local storage
       final data = doc.data()!;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('username', data['username'] ?? '');
       await prefs.setString('firstName', data['firstName'] ?? '');
       await prefs.setString('gender', data['gender'] ?? '');
-      
+
       initialScreen = const MainNavigation();
     } else {
       initialScreen = const OnboardingScreen();
@@ -171,7 +173,6 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
               const SizedBox(height: 24),
-              // Pricing Tiers Hardcoded display mimicking the fetched products
               _buildPricingCard(
                   duration: '1 Month',
                   price: '₹299',
@@ -206,12 +207,11 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
       bool isPopular = false}) {
     return GestureDetector(
       onTap: () {
-        // Find product in billing service and buy
         try {
           final product = _billingService.products
               .firstWhere((p) => p.id == productId);
           _billingService.buySubscription(product);
-          Navigator.pop(context); // Close sheet
+          Navigator.pop(context);
         } catch (e) {
           debugPrint('Product not found in Google Play yet: $productId');
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -283,8 +283,6 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
     );
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -342,6 +340,22 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: () async {
+                        // Check scan limit for free users
+                        if (!_billingService.isPremium) {
+                          final history = await ScanHistory.getHistory();
+                          final today = DateTime.now();
+                          final scansToday = history.where((s) {
+                            return s.date.year == today.year &&
+                                s.date.month == today.month &&
+                                s.date.day == today.day;
+                          }).length;
+
+                          if (scansToday >= 1) {
+                            _showPremiumBottomSheet();
+                            return;
+                          }
+                        }
+
                         await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -361,13 +375,16 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Text('View your scan history and progress in the Progress tab below', textAlign: TextAlign.center, style: TextStyle(color: Colors.white24, fontSize: 13),),
-                  const SizedBox(height: 80), // Padding for bottom banner
+                  const Text(
+                    'View your scan history and progress in the Progress tab below',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white24, fontSize: 13),
+                  ),
+                  const SizedBox(height: 80),
                 ],
               ),
             ),
           ),
-          // ── Premium Banner ──
           if (!_billingService.isPremium)
             Positioned(
               bottom: 0,
@@ -376,7 +393,8 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               child: GestureDetector(
                 onTap: _showPremiumBottomSheet,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF332A00), Color(0xFF1A1500)],
@@ -390,7 +408,8 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 36),
+                      Icon(Icons.workspace_premium,
+                          color: Color(0xFFFFD700), size: 36),
                       SizedBox(width: 16),
                       Expanded(
                         child: Column(

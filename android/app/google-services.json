@@ -1,41 +1,33 @@
 {
   "project_info": {
-    "project_number": "406657805549",
-    "project_id": "level-maxing",
-    "storage_bucket": "level-maxing.firebasestorage.app"
+    "project_number": "196680974175",
+    "project_id": "looks-maxing-app-a8f7c",
+    "storage_bucket": "looks-maxing-app-a8f7c.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:406657805549:android:6529a17e61f89c6fdb30e4",
+        "mobilesdk_app_id": "1:196680974175:android:91bcff95fe3cc2df8ec0ea",
         "android_client_info": {
-          "package_name": "com.example.level_maxing"
+          "package_name": "com.levelmaxing.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "406657805549-n3hc9ack1odil805pakhma5h21vec4c8.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.example.level_maxing",
-            "certificate_hash": "fa4c65758ac699f9ac9089d637f888d31535fee7"
-          }
-        },
-        {
-          "client_id": "406657805549-jt2esapbn2i13an68qma6u3q4su3ru0f.apps.googleusercontent.com",
+          "client_id": "196680974175-3oqntf9qngaqhuqjlugb835parcj8dsb.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyBX7ArBnNh3Rc_lEAp2t_Wx2wzD6qg8_LY"
+          "current_key": "AIzaSyCRU9MRrBLhsQJ32evJZYlzihWk5VK5qDU"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "406657805549-jt2esapbn2i13an68qma6u3q4su3ru0f.apps.googleusercontent.com",
+              "client_id": "196680974175-3oqntf9qngaqhuqjlugb835parcj8dsb.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
