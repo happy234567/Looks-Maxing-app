@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:level_maxing/guide_content.dart';
+import 'billing_service.dart';
 
 class GuidePage extends StatefulWidget {
   const GuidePage({super.key});
@@ -13,6 +14,7 @@ class _GuidePageState extends State<GuidePage>
     with SingleTickerProviderStateMixin {
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
+  final BillingService _billingService = BillingService();
 
   @override
   void initState() {
@@ -31,6 +33,71 @@ class _GuidePageState extends State<GuidePage>
 
   void _openArticle(GuideArticle article) {
     HapticFeedback.selectionClick();
+
+    // Block premium articles if user is not premium
+    if (article.isPremium && !_billingService.isPremium) {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: const Color(0xFF111111),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_rounded, color: Color(0xFFFFD700), size: 48),
+              const SizedBox(height: 16),
+              const Text(
+                'Premium Guide',
+                style: TextStyle(
+                  color: Color(0xFFFFD700),
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'This guide is only available for Premium members. Upgrade to unlock all expert guides.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD700),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: const Color(0xFF0A0A0A),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      ),
+                      builder: (_) => const _WhyBuyPremiumSheet(),
+                    );
+                  },
+                  child: const Text('Upgrade to Premium', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
     Navigator.push(
       context,
       PageRouteBuilder(

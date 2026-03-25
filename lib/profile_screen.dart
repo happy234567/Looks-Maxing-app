@@ -105,13 +105,11 @@ class _ProfilePageState extends State<ProfilePage> {
       scheme: 'mailto',
       path: 'levelmaxing952@gmail.com',
       queryParameters: {
-        'subject': 'Level Maxing - Support Request',
-        'body': 'Hi Level Maxing team,\n\n',
       },
     );
-    if (await canLaunchUrl(emailUri)) {
-      await launchUrl(emailUri);
-    } else {
+    try {
+      await launchUrl(emailUri, mode: LaunchMode.externalApplication);
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
