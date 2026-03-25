@@ -505,7 +505,30 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                   ),
                 ),
 
-              const SizedBox(height: 80),
+              const SizedBox(height: 8),
+
+              // ── Two Action Bars ─────────────────────────────────────────
+              _buildActionBar(
+                icon: Icons.support_agent_rounded,
+                label: 'Ask Coach',
+                subtitle: 'Get personalised advice',
+                iconColor: const Color(0xFF9C6FFF),
+                borderColor: const Color(0xFF9C6FFF),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const AskCoachPage())),
+              ),
+              const SizedBox(height: 12),
+              _buildActionBar(
+                icon: Icons.info_outline_rounded,
+                label: 'How to Use Scan',
+                subtitle: 'Tips for accurate results',
+                iconColor: const Color(0xFF4FC3F7),
+                borderColor: const Color(0xFF4FC3F7),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const HowToScanPage())),
+              ),
+
+              const SizedBox(height: 100),
             ],
           ),
         ),
@@ -554,6 +577,353 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               ),
             )
           : null,
+    );
+  }
+
+  Widget _buildActionBar({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required Color iconColor,
+    required Color borderColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: iconColor.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor.withOpacity(0.25)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.4),
+                          fontSize: 12)),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded,
+                color: iconColor.withOpacity(0.6), size: 15),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASK COACH PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AskCoachPage extends StatelessWidget {
+  const AskCoachPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF111111),
+        title: const Text('Ask Coach',
+            style: TextStyle(color: Color(0xFFFFD700))),
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios,
+              color: Color(0xFFFFD700), size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9C6FFF).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: const Color(0xFF9C6FFF).withOpacity(0.4),
+                      width: 2),
+                ),
+                child: const Icon(Icons.support_agent_rounded,
+                    color: Color(0xFF9C6FFF), size: 44),
+              ),
+              const SizedBox(height: 28),
+              const Text(
+                'Coming Soon',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Your AI coach is being trained to give you personalised looks-maxing advice.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: Colors.white54, fontSize: 15, height: 1.6),
+              ),
+              const SizedBox(height: 32),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9C6FFF).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                      color: const Color(0xFF9C6FFF).withOpacity(0.3)),
+                ),
+                child: const Text(
+                  '🚀  Stay tuned for updates',
+                  style: TextStyle(
+                      color: Color(0xFF9C6FFF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOW TO USE SCAN PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+class HowToScanPage extends StatelessWidget {
+  const HowToScanPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF111111),
+        title: const Text('How to Use Scan',
+            style: TextStyle(color: Color(0xFFFFD700))),
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios,
+              color: Color(0xFFFFD700), size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Center(
+              child: Column(
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4FC3F7).withOpacity(0.12),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: const Color(0xFF4FC3F7).withOpacity(0.4),
+                          width: 1.5),
+                    ),
+                    child: const Icon(Icons.camera_alt_outlined,
+                        color: Color(0xFF4FC3F7), size: 30),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('How to Get Accurate Results',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  const Text(
+                      'Follow these tips every scan for consistent scores',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white38, fontSize: 13)),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 28),
+
+            // DO section
+            _buildSectionCard(
+              title: '✅  Do This',
+              color: const Color(0xFF4CAF50),
+              items: const [
+                'Use the same camera for every scan',
+                'Keep the same background each time',
+                'Maintain the same angle and distance',
+                'Ensure consistent lighting (prefer natural light)',
+                'Keep a neutral face — no expressions',
+                'Scan without makeup or filters',
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            // DON'T section
+            _buildSectionCard(
+              title: "❌  Don't Do This",
+              color: const Color(0xFFEF5350),
+              items: const [
+                'Change camera or device frequently',
+                'Use different backgrounds or messy surroundings',
+                'Tilt your face or change angles',
+                'Scan in poor or uneven lighting',
+                'Apply makeup, filters, or edits',
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            // Scoring info
+            _buildInfoCard(
+              icon: Icons.info_outline_rounded,
+              title: 'How Your Score Works',
+              color: const Color(0xFFFFD700),
+              content:
+                  'Your final score is a blend of two equal metrics:\n\n'
+                  '• 50% Appeal — overall facial harmony, skin, and aesthetic impression\n\n'
+                  '• 50% PSL — scientific bone structure metrics including jawline, cheekbones, symmetry, and proportions\n\n'
+                  'Scores are computer-generated estimates and not absolute measures of beauty.',
+            ),
+
+            const SizedBox(height: 14),
+
+            // Disclaimer
+            _buildInfoCard(
+              icon: Icons.shield_outlined,
+              title: 'Safety Disclaimer',
+              color: const Color(0xFF9C6FFF),
+              content:
+                  'This feature is designed for entertainment and self-analysis purposes only. '
+                  'Results should not be taken as definitive judgments of personal appearance or worth.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required Color color,
+    required List<String> items,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: TextStyle(
+                  color: color,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 14),
+          ...items.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 5),
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                          color: color, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(item,
+                          style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              height: 1.4)),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard({
+    required IconData icon,
+    required String title,
+    required Color color,
+    required String content,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Text(title,
+                style: TextStyle(
+                    color: color,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold)),
+          ]),
+          const SizedBox(height: 12),
+          Text(content,
+              style: const TextStyle(
+                  color: Colors.white70, fontSize: 14, height: 1.6)),
+        ],
+      ),
     );
   }
 }

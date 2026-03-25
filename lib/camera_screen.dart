@@ -107,7 +107,7 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _isAnalyzing = true);
 
     try {
-      const String backendUrl = 'http://10.233.132.189:3000/analyze';
+      const String backendUrl = 'http://10.122.213.186:3000/analyze';
 
       var request = http.MultipartRequest('POST', Uri.parse(backendUrl));
 
