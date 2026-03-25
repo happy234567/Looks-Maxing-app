@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'scan_history.dart';
-import 'lock_in_page.dart';
 class ScanDetailScreen extends StatefulWidget {
   final ScanHistory scan;
   const ScanDetailScreen({super.key, required this.scan});

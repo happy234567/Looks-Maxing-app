@@ -3,9 +3,12 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'billing_service.dart';
+import 'scan_cooldown_service.dart';
 import 'package:http_parser/http_parser.dart';
 import 'results_screen.dart';
 import 'scan_history.dart';
+
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -92,6 +95,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _analyzePhotos() async {
     if (_frontImage == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Front face photo is required!'),
@@ -128,12 +132,17 @@ class _CameraScreenState extends State<CameraScreen> {
       var data = jsonDecode(responseBody);
 
       if (data['success'] == true) {
+        final billing = BillingService();
+        await billing.initialize();
+        await ScanCooldownService.recordScan(isPremium: billing.isPremium);
+
         await ScanHistory.saveScan(data['scores'], _frontImage?.path, imagePaths: [
   if (_frontImage != null) _frontImage!.path,
   if (_rightImage != null) _rightImage!.path,
   if (_leftImage != null) _leftImage!.path,
 ]);
 
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -149,6 +158,7 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     } catch (e) {
       setState(() => _isAnalyzing = false);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('Error: $e'), backgroundColor: Colors.red),

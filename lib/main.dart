@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'camera_screen.dart';
-import 'scan_history.dart';
 import 'login_screen.dart';
 import 'onboarding_screen.dart';
 import 'profile_screen.dart';
@@ -15,12 +14,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'billing_service.dart';
 import 'notification_service.dart';
 import 'lock_in_notification_service.dart'; // ← NEW
+import 'scan_cooldown_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   await NotificationService.initialize();
   await LockInNotificationService.initialize(); // ← NEW
+  await ScanCooldownService.initialize();
 
   final user = FirebaseAuth.instance.currentUser;
 
@@ -119,26 +120,56 @@ class FaceRatingPage extends StatefulWidget {
 class _FaceRatingPageState extends State<FaceRatingPage> {
   final BillingService _billingService = BillingService();
 
+  // Countdown timer state
+  Duration _remaining = Duration.zero;
+  bool _canScan = true;
+  double _cooldownProgress = 1.0;
+
   @override
   void initState() {
     super.initState();
-    _loadHistory();
     _billingService.initialize();
     _billingService.addListener(_onBillingUpdated);
+    _refreshCooldown();
+    // Tick every second for the live countdown
+    _startTicker();
+  }
+
+  void _startTicker() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return false;
+      await _refreshCooldown();
+      return true; // keep looping
+    });
+  }
+
+  Future<void> _refreshCooldown() async {
+    final isPremium = _billingService.isPremium;
+    final remaining =
+        await ScanCooldownService.getRemainingDuration(isPremium: isPremium);
+    final progress =
+        await ScanCooldownService.getCooldownProgress(isPremium: isPremium);
+    if (mounted) {
+      setState(() {
+        _remaining = remaining;
+        _canScan = remaining == Duration.zero;
+        _cooldownProgress = progress;
+      });
+    }
   }
 
   void _onBillingUpdated() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+      _refreshCooldown();
+    }
   }
 
   @override
   void dispose() {
     _billingService.removeListener(_onBillingUpdated);
     super.dispose();
-  }
-
-  Future<void> _loadHistory() async {
-    await ScanHistory.getHistory();
   }
 
   void _showPremiumBottomSheet() {
@@ -168,7 +199,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Get unlimited AI scans, detailed attractiveness insights, and level-maxing track features.',
+                'Get face scans every 5 days instead of 30, plus detailed attractiveness insights.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
@@ -213,7 +244,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
           _billingService.buySubscription(product);
           Navigator.pop(context);
         } catch (e) {
-          debugPrint('Product not found in Google Play yet: $productId');
+          debugPrint('Product not found: $productId');
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('Purchase not ready yet. Check Google Play Console.',
                   style: TextStyle(color: Colors.white)),
@@ -283,6 +314,98 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
     );
   }
 
+  // ── Countdown bar widget ─────────────────────────────────────────────────
+
+  Widget _buildCooldownBar() {
+    final isPremium = _billingService.isPremium;
+    final cooldownLabel = isPremium ? '5-day cooldown' : '30-day cooldown';
+    final barColor =
+        isPremium ? const Color(0xFFFFD700) : const Color(0xFF4FC3F7);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: barColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.timer_outlined, color: barColor, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Next Scan — $cooldownLabel',
+                style: TextStyle(
+                    color: barColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: _cooldownProgress.clamp(0.0, 1.0),
+              minHeight: 10,
+              backgroundColor: Colors.white12,
+              valueColor: AlwaysStoppedAnimation(barColor),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                ScanCooldownService.formatRemaining(_remaining),
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600),
+              ),
+              Text(
+                '${(_cooldownProgress * 100).toStringAsFixed(0)}%',
+                style: TextStyle(color: barColor, fontSize: 13),
+              ),
+            ],
+          ),
+          if (!isPremium) ...[
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: _showPremiumBottomSheet,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: const Color(0xFFFFD700).withOpacity(0.4)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.workspace_premium,
+                        color: Color(0xFFFFD700), size: 14),
+                    SizedBox(width: 6),
+                    Text('Upgrade for 5-day cooldown',
+                        style: TextStyle(
+                            color: Color(0xFFFFD700), fontSize: 12)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -316,125 +439,121 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.face, color: Color(0xFFFFD700), size: 90),
-                  const SizedBox(height: 24),
-                  const Text('Scan Your Face',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  const Text('Get your AI-powered attractiveness rating',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white54, fontSize: 14)),
-                  const SizedBox(height: 36),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        // Check scan limit for free users
-                        if (!_billingService.isPremium) {
-                          final history = await ScanHistory.getHistory();
-                          final today = DateTime.now();
-                          final scansToday = history.where((s) {
-                            return s.date.year == today.year &&
-                                s.date.month == today.month &&
-                                s.date.day == today.day;
-                          }).length;
-
-                          if (scansToday >= 1) {
-                            _showPremiumBottomSheet();
-                            return;
-                          }
-                        }
-
-                        await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const CameraScreen()));
-                        _loadHistory();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFD700),
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30)),
-                      ),
-                      child: const Text('SCAN FACE',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16)),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'View your scan history and progress in the Progress tab below',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white24, fontSize: 13),
-                  ),
-                  const SizedBox(height: 80),
-                ],
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            children: [
+              const SizedBox(height: 40),
+              const Icon(Icons.face, color: Color(0xFFFFD700), size: 90),
+              const SizedBox(height: 24),
+              const Text('Scan Your Face',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Text(
+                _billingService.isPremium
+                    ? 'Premium: 1 scan every 5 days'
+                    : 'Free: 1 scan every 30 days',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white54, fontSize: 14),
               ),
-            ),
-          ),
-          if (!_billingService.isPremium)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: GestureDetector(
-                onTap: _showPremiumBottomSheet,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF332A00), Color(0xFF1A1500)],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                    border: Border(
-                        top: BorderSide(
-                            color: const Color(0xFFFFD700).withOpacity(0.5),
-                            width: 1)),
+              const SizedBox(height: 36),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _canScan
+                      ? () async {
+                          await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const CameraScreen()));
+                          await _refreshCooldown();
+                        }
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD700),
+                    foregroundColor: Colors.black,
+                    disabledBackgroundColor:
+                        const Color(0xFFFFD700).withOpacity(0.3),
+                    disabledForegroundColor: Colors.black45,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30)),
                   ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.workspace_premium,
-                          color: Color(0xFFFFD700), size: 36),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('Upgrade to Premium',
-                                style: TextStyle(
-                                    color: Color(0xFFFFD700),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16)),
-                            Text('Unlimited scans & detailed insights',
-                                style: TextStyle(
-                                    color: Colors.white70, fontSize: 12)),
-                          ],
-                        ),
-                      ),
-                      Icon(Icons.chevron_right, color: Color(0xFFFFD700)),
-                    ],
+                  child: Text(
+                    _canScan ? 'SCAN FACE' : 'SCAN LOCKED',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                 ),
               ),
-            ),
-        ],
+              const SizedBox(height: 28),
+
+              // Show countdown bar only when locked
+              if (!_canScan) _buildCooldownBar(),
+
+              if (_canScan)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 20),
+                  child: Text(
+                    'Your scan is ready! Tap above to analyse your face.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white38, fontSize: 13),
+                  ),
+                ),
+
+              const SizedBox(height: 80),
+            ],
+          ),
+        ),
       ),
+      bottomSheet: !_billingService.isPremium
+          ? GestureDetector(
+              onTap: _showPremiumBottomSheet,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF332A00), Color(0xFF1A1500)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  border: Border(
+                      top: BorderSide(
+                          color: const Color(0xFFFFD700).withOpacity(0.5),
+                          width: 1)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.workspace_premium,
+                        color: Color(0xFFFFD700), size: 36),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Upgrade to Premium',
+                              style: TextStyle(
+                                  color: Color(0xFFFFD700),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16)),
+                          Text('Scan every 5 days instead of 30',
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: Color(0xFFFFD700)),
+                  ],
+                ),
+              ),
+            )
+          : null,
     );
   }
 }

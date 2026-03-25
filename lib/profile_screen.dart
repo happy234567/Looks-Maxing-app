@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'login_screen.dart';
 import 'billing_service.dart';
 import 'notification_service.dart';
@@ -95,6 +96,28 @@ class _ProfilePageState extends State<ProfilePage> {
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (route) => false,
+      );
+    }
+  }
+
+  Future<void> _contactUs() async {
+    final Uri emailUri = Uri(
+      scheme: 'mailto',
+      path: 'levelmaxing952@gmail.com',
+      queryParameters: {
+        'subject': 'Level Maxing - Support Request',
+        'body': 'Hi Level Maxing team,\n\n',
+      },
+    );
+    if (await canLaunchUrl(emailUri)) {
+      await launchUrl(emailUri);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open email app. Please email us at levelmaxing952@gmail.com'),
+          backgroundColor: Color(0xFF1A1A1A),
+        ),
       );
     }
   }
@@ -442,6 +465,25 @@ class _ProfilePageState extends State<ProfilePage> {
                     color: Colors.red,
                     onTap: _deleteAccount,
                     isDestructive: true,
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // ── Contact Us ──
+                  const Text(
+                    'SUPPORT',
+                    style: TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2),
+                  ),
+                  const SizedBox(height: 10),
+                  _actionButton(
+                    icon: Icons.mail_outline_rounded,
+                    label: 'Contact Us',
+                    color: const Color(0xFF4FC3F7),
+                    onTap: _contactUs,
                   ),
 
                   const SizedBox(height: 32),
