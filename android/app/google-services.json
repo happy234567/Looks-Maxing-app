@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "196680974175-8pb7ljt8qk1j6v32op457uiftlqs7a5a.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.levelmaxing.app",
+            "certificate_hash": "5475844a75e44b9e766748e90940908ea0a0c737"
+          }
+        },
+        {
+          "client_id": "196680974175-irpb9u4215g6bq08lg4vbcjdu9kkruj3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.levelmaxing.app",
+            "certificate_hash": "aa1e51bc05b89f18ed4bed7af433547f9341dff0"
+          }
+        },
+        {
           "client_id": "196680974175-3oqntf9qngaqhuqjlugb835parcj8dsb.apps.googleusercontent.com",
           "client_type": 3
         }
