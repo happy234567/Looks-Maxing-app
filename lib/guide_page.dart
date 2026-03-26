@@ -275,6 +275,17 @@ class _GuidePageState extends State<GuidePage>
   }
 
   Widget _premiumBanner() {
+    // NEW: Calculate the cheapest monthly price dynamically from the yearly plan
+    String startingPriceText = 'Tap to see why';
+    try {
+      final yearlyProduct = _billingService.products.firstWhere((p) => p.id == 'premium_yearly');
+      final cheapestMonthly = yearlyProduct.rawPrice / 12;
+      startingPriceText = 'From ${yearlyProduct.currencySymbol}${cheapestMonthly.toStringAsFixed(0)}/month — Tap to see why';
+    } catch (e) {
+      // Fallback if products haven't loaded yet from Google Play
+      startingPriceText = 'View Premium Plans — Tap to see why';
+    }
+
     return GestureDetector(
       onTap: () {
         showModalBottomSheet(
@@ -343,9 +354,10 @@ class _GuidePageState extends State<GuidePage>
                 color: const Color(0xFFFFD700),
                 borderRadius: BorderRadius.circular(30),
               ),
-              child: const Text(
-                'From ₹249/month — Tap to see why',
-                style: TextStyle(
+              child: Text(
+                // NEW: Use the dynamic text here!
+                startingPriceText,
+                style: const TextStyle(
                   color: Colors.black,
                   fontSize: 13.5,
                   fontWeight: FontWeight.w800,
