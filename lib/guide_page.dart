@@ -1110,7 +1110,7 @@ class _WhyBuyPremiumSheet extends StatelessWidget {
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Premium is 15× Cheaper Than Influencer Courses',
+                  'Premium is upto 15× Cheaper Than Influencer Courses',
                   style: TextStyle(
                       color: Color(0xFFFFD700),
                       fontSize: 16,
