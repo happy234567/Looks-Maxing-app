@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:level_maxing/guide_content.dart';
 import 'billing_service.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 
 class GuidePage extends StatefulWidget {
   const GuidePage({super.key});
@@ -23,10 +24,20 @@ class _GuidePageState extends State<GuidePage>
         vsync: this, duration: const Duration(milliseconds: 400));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
+    
+    // Listen for when the user buys premium so the page updates!
+    _billingService.addListener(_onBillingUpdated);
+  }
+
+  // Rebuild the screen when billing state changes
+  void _onBillingUpdated() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    // Stop listening when we leave the page
+    _billingService.removeListener(_onBillingUpdated);
     _fadeCtrl.dispose();
     super.dispose();
   }
@@ -84,7 +95,7 @@ class _GuidePageState extends State<GuidePage>
                       shape: const RoundedRectangleBorder(
                         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                       ),
-                      builder: (_) => const _WhyBuyPremiumSheet(),
+                      builder: (_) => _WhyBuyPremiumSheet(billingService: _billingService),
                     );
                   },
                   child: const Text('Upgrade to Premium', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -143,8 +154,12 @@ class _GuidePageState extends State<GuidePage>
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    _premiumBanner(),
-                    const SizedBox(height: 28),
+                    
+                    // Only show the banner if the user is NOT premium
+                    if (!_billingService.isPremium) ...[
+                      _premiumBanner(),
+                      const SizedBox(height: 28),
+                    ],
 
                     // Free Guides Section
                     _sectionHeader(
@@ -266,7 +281,7 @@ class _GuidePageState extends State<GuidePage>
           context: context,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
-          builder: (_) => const _WhyBuyPremiumSheet(),
+          builder: (_) => _WhyBuyPremiumSheet(billingService: _billingService),
         );
       },
       child: Container(
@@ -855,11 +870,53 @@ class _ArticleScreenState extends State<_ArticleScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WHY BUY PREMIUM SHEET
+// WHY BUY PREMIUM SHEET (SMART VERSION)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _WhyBuyPremiumSheet extends StatelessWidget {
-  const _WhyBuyPremiumSheet();
+class _WhyBuyPremiumSheet extends StatefulWidget {
+  final BillingService billingService;
+  const _WhyBuyPremiumSheet({required this.billingService});
+
+  @override
+  State<_WhyBuyPremiumSheet> createState() => _WhyBuyPremiumSheetState();
+}
+
+class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
+  
+  @override
+  void initState() {
+    super.initState();
+    // Listen to billing changes while the sheet is open
+    widget.billingService.addListener(_onBillingUpdate);
+  }
+
+  @override
+  void dispose() {
+    widget.billingService.removeListener(_onBillingUpdate);
+    super.dispose();
+  }
+
+  void _onBillingUpdate() {
+    // If the purchase was successful, automatically close this popup!
+    if (widget.billingService.isPremium && mounted) {
+      Navigator.pop(context);
+    }
+    if (mounted) setState(() {});
+  }
+
+  ProductDetails? _getProduct(String id) {
+    try {
+      return widget.billingService.products.firstWhere((p) => p.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  String _getMonthlyBreakdown(ProductDetails? product, int months) {
+    if (product == null) return '';
+    double monthlyRaw = product.rawPrice / months;
+    return '${product.currencySymbol}${monthlyRaw.toStringAsFixed(0)}/month';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1006,6 +1063,43 @@ class _WhyBuyPremiumSheet extends StatelessWidget {
                     ),
                   ]),
                 ),
+
+                const SizedBox(height: 24),
+                
+                // RESTORE PURCHASES BUTTON
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await widget.billingService.restorePurchases();
+                      if (mounted) {
+                        Navigator.pop(context); 
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Purchases restored successfully!'),
+                            backgroundColor: Color(0xFF8BC34A),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Failed to restore purchases.'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text(
+                    'Restore Purchases',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      decoration: TextDecoration.underline,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1088,6 +1182,11 @@ class _WhyBuyPremiumSheet extends StatelessWidget {
   }
 
   Widget _pricingBlock() {
+    // Dynamically grab the real products from Google Play
+    ProductDetails? monthly = _getProduct('premium_monthly');
+    ProductDetails? sixMonth = _getProduct('premium_6month');
+    ProductDetails? yearly = _getProduct('premium_yearly');
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
@@ -1119,28 +1218,43 @@ class _WhyBuyPremiumSheet extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 12),
-            const Text('Typical influencer course:',
-                style: TextStyle(color: Colors.white54, fontSize: 13)),
-            const Text('₹4,500 / month',
-                style: TextStyle(
-                    color: Colors.white38,
-                    fontSize: 15,
-                    decoration: TextDecoration.lineThrough)),
-            const SizedBox(height: 10),
+            
             const Text('Our Premium Plans:',
                 style: TextStyle(
                     color: Colors.white70,
                     fontSize: 13,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            _priceRow('₹299 / month', '', false),
+            
+            // SMART BUTTON 1: Monthly
+            _priceRow(
+              monthly != null ? '${monthly.price} / month' : 'Loading price...', 
+              '', 
+              false,
+              monthly != null ? () => widget.billingService.buySubscription(monthly) : null
+            ),
             const SizedBox(height: 6),
-            _priceRow('₹1499 / 6 months', '₹249/month', true),
+            
+            // SMART BUTTON 2: 6 Months
+            _priceRow(
+              sixMonth != null ? '${sixMonth.price} / 6 months' : 'Loading price...', 
+              _getMonthlyBreakdown(sixMonth, 6), 
+              true,
+              sixMonth != null ? () => widget.billingService.buySubscription(sixMonth) : null
+            ),
             const SizedBox(height: 6),
-            _priceRow('₹2799 / 12 months', '₹233/month', false),
+            
+            // SMART BUTTON 3: Yearly
+            _priceRow(
+              yearly != null ? '${yearly.price} / 12 months' : 'Loading price...', 
+              _getMonthlyBreakdown(yearly, 12), 
+              false,
+              yearly != null ? () => widget.billingService.buySubscription(yearly) : null
+            ),
+            
             const SizedBox(height: 10),
             const Text(
-              'Get the same core knowledge without spending thousands.',
+              'Tap a plan to securely subscribe via Google Play.',
               style: TextStyle(
                   color: Colors.white54,
                   fontSize: 13,
@@ -1150,56 +1264,59 @@ class _WhyBuyPremiumSheet extends StatelessWidget {
     );
   }
 
-  Widget _priceRow(String price, String sub, bool isBest) {
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isBest
-            ? const Color(0xFFFFD700).withOpacity(0.15)
-            : Colors.white.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
+  Widget _priceRow(String price, String sub, bool isBest, VoidCallback? onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
           color: isBest
-              ? const Color(0xFFFFD700).withOpacity(0.7)
-              : Colors.white12,
-          width: isBest ? 1.5 : 1,
-        ),
-      ),
-      child: Row(children: [
-        Expanded(
-          child: Text(
-            price,
-            style: TextStyle(
-              color: isBest ? const Color(0xFFFFD700) : Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-            ),
+              ? const Color(0xFFFFD700).withOpacity(0.15)
+              : Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isBest
+                ? const Color(0xFFFFD700).withOpacity(0.7)
+                : Colors.white12,
+            width: isBest ? 1.5 : 1,
           ),
         ),
-        if (sub.isNotEmpty)
-          Text(sub,
-              style:
-                  const TextStyle(color: Colors.white54, fontSize: 12)),
-        if (isBest) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFD700),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Text(
-              '⭐ Most Popular',
+        child: Row(children: [
+          Expanded(
+            child: Text(
+              price,
               style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold),
+                color: isBest ? const Color(0xFFFFD700) : Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-        ],
-      ]),
+          if (sub.isNotEmpty)
+            Text(sub,
+                style:
+                    const TextStyle(color: Colors.white54, fontSize: 12)),
+          if (isBest) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFD700),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                '⭐ Most Popular',
+                style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ]),
+      ),
     );
   }
 

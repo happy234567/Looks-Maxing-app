@@ -15,16 +15,36 @@ import 'billing_service.dart';
 import 'notification_service.dart';
 import 'lock_in_notification_service.dart'; // ← NEW
 import 'scan_cooldown_service.dart';
+import 'dart:ui';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 void main() async {
+  // 1. WAKE UP FLUTTER FIRST
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 2. WAKE UP FIREBASE SECOND
   await Firebase.initializeApp();
+
+  // 3. NOW TURN ON CRASHLYTICS
+  // Pass all uncaught "fatal" errors from the framework to Crashlytics
+  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+  // Pass all uncaught asynchronous errors that aren't handled by the Flutter framework to Crashlytics
+  PlatformDispatcher.instance.onError = (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    return true;
+  };
+
+  // 4. INITIALIZE ALL YOUR APP SERVICES
   await NotificationService.initialize();
   await LockInNotificationService.initialize(); // ← NEW
   await ScanCooldownService.initialize();
+  
+  // Make sure billing initializes so users can see your paywall!
+  await BillingService().initialize(); 
 
+  // 5. CHECK LOGGED IN USER
   final user = FirebaseAuth.instance.currentUser;
-
   Widget initialScreen = const LoginScreen();
 
   if (user != null) {
@@ -40,6 +60,7 @@ void main() async {
       await prefs.setString('firstName', data['firstName'] ?? '');
       await prefs.setString('gender', data['gender'] ?? '');
 
+      // Assuming MainNavigation is defined further down in your file
       initialScreen = const MainNavigation();
     } else {
       initialScreen = const OnboardingScreen();
