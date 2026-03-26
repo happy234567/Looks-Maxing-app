@@ -5,155 +5,258 @@ import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PURCHASE STATUS ENUM
+// Used to broadcast purchase outcomes to any listening UI widget.
+// ─────────────────────────────────────────────────────────────────────────────
+enum PurchaseOutcome { none, pending, success, error, canceled }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCALIZED COURSE PRICE HELPER
+// Returns the typical influencer-course price in the user's local currency.
+// Used in the "15x cheaper" marketing section of the paywall.
+// ─────────────────────────────────────────────────────────────────────────────
+String getLocalizedCoursePrice(String? currencyCode) {
+  switch (currencyCode?.toUpperCase()) {
+    case 'INR':
+      return '₹4,500';
+    case 'USD':
+      return '\$50';
+    case 'GBP':
+      return '£40';
+    case 'EUR':
+      return '€45';
+    case 'AUD':
+      return 'A\$70';
+    case 'CAD':
+      return 'C\$65';
+    default:
+      // Fallback: just say "typical courses" without a price
+      return 'typical courses';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BILLING SERVICE
+// Singleton ChangeNotifier — call BillingService() anywhere to get the same
+// instance. Call initialize() once at app startup (already done in main.dart).
+// ─────────────────────────────────────────────────────────────────────────────
 class BillingService extends ChangeNotifier {
+  // ── Singleton setup ────────────────────────────────────────────────────────
   static final BillingService _instance = BillingService._internal();
   factory BillingService() => _instance;
   BillingService._internal();
 
-  final InAppPurchase _inAppPurchase = InAppPurchase.instance;
-  StreamSubscription<List<PurchaseDetails>>? _subscription;
+  // ── Google Play product IDs ────────────────────────────────────────────────
+  // These MUST exactly match the product IDs you created in Google Play Console.
+  static const String monthlyId  = 'premium_monthly';
+  static const String sixMonthId = 'premium_6month';
+  static const String yearlyId   = 'premium_yearly';
 
-  // ✅ These MUST match exactly what you created in Google Play Console
-  static const String monthlyId = 'premium_monthly';
-  static const String sixMonthsId = 'sixmonth_1499';
-  static const String yearlyId = 'yearly_2799';
+  static const List<String> _productIds = [monthlyId, sixMonthId, yearlyId];
 
-  final List<String> _productIds = [monthlyId, sixMonthsId, yearlyId];
+  // ── Internal state ─────────────────────────────────────────────────────────
+  final InAppPurchase _iap = InAppPurchase.instance;
+  StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
 
-  bool isAvailable = false;
+  bool isStoreAvailable   = false;
+  bool isLoadingProducts  = false;   // true while queryProductDetails runs
+  bool isProcessingPurchase = false; // true while a purchase is in-flight
+  String? productsLoadError;         // non-null if product fetch failed
+
   List<ProductDetails> products = [];
   bool isPremium = false;
-  bool isLoading = false;
 
+  // Broadcast the last purchase outcome so UI widgets can react
+  PurchaseOutcome lastPurchaseOutcome = PurchaseOutcome.none;
+  String? lastPurchaseErrorMessage;
+
+  // ── Convenience getters ────────────────────────────────────────────────────
+
+  /// Returns the currency code of the first loaded product (e.g. "INR", "USD").
+  /// Falls back to null if products haven't loaded yet.
+  String? get currencyCode {
+    if (products.isEmpty) return null;
+    return products.first.currencyCode;
+  }
+
+  bool get isInitialized => isStoreAvailable;
+
+  /// Returns the ProductDetails for a given product ID, or null if not found.
+  ProductDetails? productById(String id) {
+    try {
+      return products.firstWhere((p) => p.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ── Initialization ─────────────────────────────────────────────────────────
   Future<void> initialize() async {
-    isAvailable = await _inAppPurchase.isAvailable();
-    if (!isAvailable) {
-      debugPrint('Store is not available.');
+    isStoreAvailable = await _iap.isAvailable();
+    if (!isStoreAvailable) {
+      debugPrint('[BillingService] Store not available on this device.');
       return;
     }
 
-    // Cancel any existing subscription before creating a new one
-    await _subscription?.cancel();
-
-    final Stream<List<PurchaseDetails>> purchaseUpdated =
-        _inAppPurchase.purchaseStream;
-
-    _subscription = purchaseUpdated.listen(
-      (purchaseDetailsList) {
-        _listenToPurchaseUpdated(purchaseDetailsList);
-      },
-      onDone: () {
-        _subscription?.cancel();
-      },
-      onError: (error) {
-        debugPrint('Purchase Stream Error: $error');
-      },
+    // Cancel any pre-existing stream subscription before re-subscribing.
+    await _purchaseSubscription?.cancel();
+    _purchaseSubscription = _iap.purchaseStream.listen(
+      _onPurchaseUpdate,
+      onDone: () => _purchaseSubscription?.cancel(),
+      onError: (error) => debugPrint('[BillingService] Stream error: $error'),
     );
 
     await _loadProducts();
     await _checkPremiumStatusFirebase();
   }
 
+  // ── Product Loading ────────────────────────────────────────────────────────
   Future<void> _loadProducts() async {
-    final ProductDetailsResponse response =
-        await _inAppPurchase.queryProductDetails(_productIds.toSet());
+    isLoadingProducts = true;
+    productsLoadError = null;
+    notifyListeners();
 
-    if (response.notFoundIDs.isNotEmpty) {
-      debugPrint('Products NOT found in Play Console: ${response.notFoundIDs}');
-    }
+    try {
+      final ProductDetailsResponse response =
+          await _iap.queryProductDetails(_productIds.toSet());
 
-    if (response.error == null) {
-      products = response.productDetails;
+      if (response.notFoundIDs.isNotEmpty) {
+        debugPrint(
+            '[BillingService] Products NOT found in Play Console: ${response.notFoundIDs}');
+      }
+
+      if (response.error != null) {
+        productsLoadError = response.error!.message;
+        debugPrint('[BillingService] Product load error: ${response.error!.message}');
+      } else {
+        // Sort so Monthly → 6-Month → Yearly always appears in that order in UI
+        products = response.productDetails
+          ..sort((a, b) => _productIds.indexOf(a.id) - _productIds.indexOf(b.id));
+      }
+    } catch (e) {
+      productsLoadError = 'Failed to load products. Please try again.';
+      debugPrint('[BillingService] Exception loading products: $e');
+    } finally {
+      isLoadingProducts = false;
       notifyListeners();
-    } else {
-      debugPrint('Error loading products: ${response.error!.message}');
     }
   }
 
-  // ✅ Fixed: uses GooglePlayPurchaseParam for subscriptions
+  /// Call this if the first load failed and the user taps "Retry".
+  Future<void> retryLoadProducts() => _loadProducts();
+
+  // ── Purchase Flow ──────────────────────────────────────────────────────────
+  /// Triggers the Google Play subscription purchase sheet for the given product.
   Future<void> buySubscription(ProductDetails productDetails) async {
+    if (isProcessingPurchase) return; // prevent double-tap
+    isProcessingPurchase = true;
+    lastPurchaseOutcome = PurchaseOutcome.none;
+    notifyListeners();
+
     try {
       final GooglePlayPurchaseParam purchaseParam = GooglePlayPurchaseParam(
         productDetails: productDetails,
       );
-      await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+      // All our products are subscriptions → buyNonConsumable is correct.
+      await _iap.buyNonConsumable(purchaseParam: purchaseParam);
     } catch (e) {
-      debugPrint('Error starting purchase: $e');
+      debugPrint('[BillingService] Error starting purchase: $e');
+      isProcessingPurchase = false;
+      lastPurchaseOutcome = PurchaseOutcome.error;
+      lastPurchaseErrorMessage = 'Could not start purchase. Please try again.';
+      notifyListeners();
     }
   }
 
   Future<void> restorePurchases() async {
-    await _inAppPurchase.restorePurchases();
+    await _iap.restorePurchases();
   }
 
-  void _listenToPurchaseUpdated(
-      List<PurchaseDetails> purchaseDetailsList) {
-    for (final PurchaseDetails purchaseDetails in purchaseDetailsList) {
-      if (purchaseDetails.status == PurchaseStatus.pending) {
-        debugPrint('Purchase pending...');
-      } else {
-        if (purchaseDetails.status == PurchaseStatus.error) {
-          debugPrint('Purchase error: ${purchaseDetails.error}');
-        } else if (purchaseDetails.status == PurchaseStatus.purchased ||
-            purchaseDetails.status == PurchaseStatus.restored) {
-          _deliverProduct(purchaseDetails);
-        } else if (purchaseDetails.status == PurchaseStatus.canceled) {
-          debugPrint('Purchase canceled by user.');
-        }
+  // ── Purchase Stream Listener ───────────────────────────────────────────────
+  void _onPurchaseUpdate(List<PurchaseDetails> purchaseDetailsList) {
+    for (final PurchaseDetails purchase in purchaseDetailsList) {
+      switch (purchase.status) {
+        case PurchaseStatus.pending:
+          lastPurchaseOutcome = PurchaseOutcome.pending;
+          notifyListeners();
+          break;
 
-        if (purchaseDetails.pendingCompletePurchase) {
-          _inAppPurchase.completePurchase(purchaseDetails);
-        }
+        case PurchaseStatus.purchased:
+        case PurchaseStatus.restored:
+          _deliverProduct(purchase);
+          break;
+
+        case PurchaseStatus.error:
+          isProcessingPurchase = false;
+          lastPurchaseOutcome = PurchaseOutcome.error;
+          lastPurchaseErrorMessage =
+              purchase.error?.message ?? 'Purchase failed. Please try again.';
+          notifyListeners();
+          break;
+
+        case PurchaseStatus.canceled:
+          isProcessingPurchase = false;
+          lastPurchaseOutcome = PurchaseOutcome.canceled;
+          notifyListeners();
+          break;
+      }
+
+      // Always complete the purchase to acknowledge it with Google Play.
+      if (purchase.pendingCompletePurchase) {
+        _iap.completePurchase(purchase);
       }
     }
   }
 
-  Future<void> _deliverProduct(PurchaseDetails purchaseDetails) async {
+  // ── Deliver Product ────────────────────────────────────────────────────────
+  Future<void> _deliverProduct(PurchaseDetails purchase) async {
     isPremium = true;
+    isProcessingPurchase = false;
+    lastPurchaseOutcome = PurchaseOutcome.success;
     notifyListeners();
-    await _updatePremiumStatusInFirebase(true);
+    await _updatePremiumInFirebase(true);
   }
 
-  Future<void> _updatePremiumStatusInFirebase(bool premium) async {
+  // ── Firebase Helpers ───────────────────────────────────────────────────────
+  Future<void> _updatePremiumInFirebase(bool premium) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .set({
-          'isPremium': premium,
-          'premiumUpdated': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      } catch (e) {
-        debugPrint('Error updating premium in Firebase: $e');
-      }
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'isPremium': premium,
+        'premiumUpdated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[BillingService] Firebase update error: $e');
     }
   }
 
   Future<void> _checkPremiumStatusFirebase() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      try {
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-        if (doc.exists &&
-            doc.data()!.containsKey('isPremium') &&
-            doc.data()!['isPremium'] == true) {
-          isPremium = true;
-          notifyListeners();
-        }
-      } catch (e) {
-        debugPrint('Error checking Firebase premium: $e');
+    if (user == null) return;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (doc.exists &&
+          doc.data()!['isPremium'] == true) {
+        isPremium = true;
+        notifyListeners();
       }
+    } catch (e) {
+      debugPrint('[BillingService] Firebase check error: $e');
     }
   }
 
+  // ── Cleanup ────────────────────────────────────────────────────────────────
   @override
   void dispose() {
-    _subscription?.cancel();
+    _purchaseSubscription?.cancel();
     super.dispose();
   }
 }

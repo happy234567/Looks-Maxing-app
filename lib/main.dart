@@ -214,7 +214,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                   duration: '6 Months',
                   price: '₹1499',
                   description: 'Save 16%. Only ₹249/month. Billed every 6 months.',
-                  productId: BillingService.sixMonthsId,
+                  productId: BillingService.sixMonthId,
                   isPopular: true),
               const SizedBox(height: 12),
               _buildPricingCard(

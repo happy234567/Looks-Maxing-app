@@ -26,7 +26,7 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     _loadProfile();
     _billingService.addListener(_onBillingUpdated);
-    if (!_billingService.isAvailable) {
+    if (!_billingService.isInitialized) {
       _billingService.initialize();
     }
   }
