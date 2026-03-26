@@ -194,6 +194,34 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
   }
 
   void _showPremiumBottomSheet() {
+    // 1. Grab the real products dynamically from Google Play
+    var monthly, sixMonth, yearly;
+    try {
+      monthly = _billingService.products.firstWhere((p) => p.id == BillingService.monthlyId);
+    } catch (_) {}
+    try {
+      sixMonth = _billingService.products.firstWhere((p) => p.id == BillingService.sixMonthId);
+    } catch (_) {}
+    try {
+      yearly = _billingService.products.firstWhere((p) => p.id == BillingService.yearlyId);
+    } catch (_) {}
+
+    // 2. Dynamically calculate the monthly breakdown math
+    String monthlyDesc = 'Billed monthly. Cancel anytime.';
+    
+    String sixMonthDesc = 'Save 16%. Billed every 6 months.';
+    if (sixMonth != null) {
+      double monthlyRaw = sixMonth.rawPrice / 6;
+      sixMonthDesc = 'Save 16%. Only ${sixMonth.currencySymbol}${monthlyRaw.toStringAsFixed(0)}/month. Billed every 6 months.';
+    }
+    
+    String yearlyDesc = 'Best Value! Save 22%. Billed annually.';
+    if (yearly != null) {
+      double monthlyRaw = yearly.rawPrice / 12;
+      yearlyDesc = 'Best Value! Save 22%. Only ${yearly.currencySymbol}${monthlyRaw.toStringAsFixed(0)}/month. Billed annually.';
+    }
+
+    // 3. Show the sheet with the dynamic data
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
@@ -225,24 +253,27 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
               const SizedBox(height: 24),
+              
+              // SMART PRICING CARDS
               _buildPricingCard(
                   duration: '1 Month',
-                  price: '₹299',
-                  description: 'Billed monthly. Cancel anytime.',
+                  price: monthly != null ? monthly.price : 'Loading...',
+                  description: monthlyDesc,
                   productId: BillingService.monthlyId),
               const SizedBox(height: 12),
               _buildPricingCard(
                   duration: '6 Months',
-                  price: '₹1499',
-                  description: 'Save 16%. Only ₹249/month. Billed every 6 months.',
+                  price: sixMonth != null ? sixMonth.price : 'Loading...',
+                  description: sixMonthDesc,
                   productId: BillingService.sixMonthId,
                   isPopular: true),
               const SizedBox(height: 12),
               _buildPricingCard(
                   duration: '12 Months',
-                  price: '₹2799',
-                  description: 'Best Value! Save 22%. Only ₹233/month. Billed annually.',
+                  price: yearly != null ? yearly.price : 'Loading...',
+                  description: yearlyDesc,
                   productId: BillingService.yearlyId),
+              
               const SizedBox(height: 32),
             ],
           ),
