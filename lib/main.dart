@@ -370,7 +370,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
 
   Widget _buildCooldownBar() {
     final isPremium = _billingService.isPremium;
-    final cooldownLabel = isPremium ? '5-day cooldown' : '30-day cooldown';
+    final cooldownLabel = isPremium ? '3-day cooldown' : '30-day cooldown';
     final barColor =
         isPremium ? const Color(0xFFFFD700) : const Color(0xFF4FC3F7);
 
@@ -445,7 +445,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                     Icon(Icons.workspace_premium,
                         color: Color(0xFFFFD700), size: 14),
                     SizedBox(width: 6),
-                    Text('Upgrade for 5-day cooldown',
+                    Text('Upgrade for 3-day cooldown',
                         style: TextStyle(
                             color: Color(0xFFFFD700), fontSize: 12)),
                   ],
@@ -507,7 +507,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               const SizedBox(height: 10),
               Text(
                 _billingService.isPremium
-                    ? 'Premium: 1 scan every 5 days'
+                    ? 'Premium: 1 scan every 3 days'
                     : 'Free: 1 scan every 30 days',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white54, fontSize: 14),
@@ -617,7 +617,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                                   color: Color(0xFFFFD700),
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16)),
-                          Text('Scan every 5 days instead of 30',
+                          Text('Scan every 3 days instead of 30',
                               style: TextStyle(
                                   color: Colors.white70, fontSize: 12)),
                         ],
