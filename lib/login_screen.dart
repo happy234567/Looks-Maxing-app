@@ -53,7 +53,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      if (doc.exists) {
+      // Check if document exists AND has username field (means onboarding completed)
+      if (doc.exists && doc.data()?['username'] != null && doc.data()?['username'] != '') {
         // User has completed onboarding, load their data
         final data = doc.data()!;
         final prefs = await SharedPreferences.getInstance();
@@ -61,15 +62,17 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setString('firstName', data['firstName'] ?? '');
         await prefs.setString('gender', data['gender'] ?? '');
 
+        // ignore: use_build_context_synchronously
         Navigator.pushReplacement(context,
             MaterialPageRoute(builder: (_) => const MainNavigation()));
       } else {
-        // User hasn't completed onboarding yet
+        // User hasn't completed onboarding yet (new user or incomplete profile)
         Navigator.pushReplacement(context,
             MaterialPageRoute(builder: (_) => const OnboardingScreen()));
       }
     } catch (e) {
       setState(() => _isLoading = false);
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
