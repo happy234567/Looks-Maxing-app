@@ -390,7 +390,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   const Center(
                     child: Column(
                       children: [
-                        Text('Level Maxing', style: TextStyle(color: Colors.white24, fontSize: 12)),
+                        Text('Level Max', style: TextStyle(color: Colors.white24, fontSize: 12)),
                         SizedBox(height: 2),
                         Text('v1.0.0', style: TextStyle(color: Colors.white12, fontSize: 11)),
                       ],

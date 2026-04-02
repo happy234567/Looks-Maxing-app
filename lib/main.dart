@@ -77,7 +77,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Level Maxing',
+      title: 'Level Max',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
       home: initialScreen,
@@ -195,6 +195,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
 
   void _showPremiumBottomSheet() {
     // 1. Grab the real products dynamically from Google Play
+    // ignore: prefer_typing_uninitialized_variables
     var monthly, sixMonth, yearly;
     try {
       monthly = _billingService.products.firstWhere((p) => p.id == BillingService.monthlyId);

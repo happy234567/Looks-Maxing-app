@@ -112,8 +112,8 @@ class _GuidePageState extends State<GuidePage>
     Navigator.push(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, a, __) => _ArticleScreen(article: article),
-        transitionsBuilder: (_, a, __, child) => SlideTransition(
+        pageBuilder: (_, a, _) => _ArticleScreen(article: article),
+        transitionsBuilder: (_, a, _, child) => SlideTransition(
           position: Tween(
             begin: const Offset(1.0, 0.0),
             end: Offset.zero,

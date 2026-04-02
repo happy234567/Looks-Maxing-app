@@ -67,7 +67,7 @@ class _AnimatedProgressBarState extends State<_AnimatedProgressBar>
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _anim,
-    builder: (_, __) => ClipRRect(
+    builder: (_, _) => ClipRRect(
       borderRadius: BorderRadius.circular(widget.height),
       child: LinearProgressIndicator(
         value: _anim.value,
@@ -120,7 +120,7 @@ class _AnimatedScoreCircleState extends State<_AnimatedScoreCircle>
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _anim,
-    builder: (_, __) => Stack(alignment: Alignment.center, children: [
+    builder: (_, _) => Stack(alignment: Alignment.center, children: [
       SizedBox(
         width: widget.size, height: widget.size,
         child: CircularProgressIndicator(
@@ -578,7 +578,9 @@ class _SetupScreenState extends State<_SetupScreen> {
   @override
   void dispose() {
     _pageCtrl.dispose();
-    for (final c in _taskCtrls) c.dispose();
+    for (final c in _taskCtrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 

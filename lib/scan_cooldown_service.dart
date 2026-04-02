@@ -138,7 +138,7 @@ class ScanCooldownService {
             ? 'Your 3-day cooldown is over! Open the app, scan your face and check your latest results. 🏆'
             : 'Your 30-day cooldown is over! Open the app, scan your face and check your latest results. 📸',
         contentTitle: '📸 Face Scan Available!',
-        summaryText: 'Level Maxing',
+        summaryText: 'Level Max',
       ),
       ticker: 'Face scan available!',
       when: scheduledTime.millisecondsSinceEpoch,

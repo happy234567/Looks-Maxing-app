@@ -81,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(),
-              const Text('LEVEL MAXING',
+              const Text('LEVEL MAX',
                   style: TextStyle(
                       color: Color(0xFFFFD700),
                       fontSize: 36,
