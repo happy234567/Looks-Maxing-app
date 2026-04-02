@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart'; // Added url_launcher
 import 'onboarding_screen.dart';
@@ -38,15 +39,32 @@ class _LoginScreenState extends State<LoginScreen> {
       // Save notification token for this user
       await NotificationService.saveTokenAfterLogin();
 
-      final prefs = await SharedPreferences.getInstance();
-      final hasProfile = prefs.getString('username') != null;
+      // Check Firestore to see if user has completed onboarding
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
 
       if (!mounted) return;
 
-      if (hasProfile) {
+      if (doc.exists) {
+        // User has completed onboarding, load their data
+        final data = doc.data()!;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('username', data['username'] ?? '');
+        await prefs.setString('firstName', data['firstName'] ?? '');
+        await prefs.setString('gender', data['gender'] ?? '');
+
         Navigator.pushReplacement(context,
             MaterialPageRoute(builder: (_) => const MainNavigation()));
       } else {
+        // User hasn't completed onboarding yet
         Navigator.pushReplacement(context,
             MaterialPageRoute(builder: (_) => const OnboardingScreen()));
       }

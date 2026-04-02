@@ -416,13 +416,21 @@ Future<LockInData?> _load() async {
       if (snap.exists) {
         final raw = (snap.data() as Map<String, dynamic>)['lock_in_data'];
         if (raw != null) {
+          // Clear any old local data when successfully loading from Firestore
+          // This prevents showing previous user's data when switching accounts
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove(_kKey);
+          } catch (_) {}
+          
           return LockInData.fromJson(jsonDecode(raw));
         }
       }
     }
   } catch (_) {}
 
-  // Fallback to local
+  // Fallback to local only if Firestore has no data
+  // This should only happen for offline users or users who haven't synced yet
   try {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_kKey);
