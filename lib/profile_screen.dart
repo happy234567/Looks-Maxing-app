@@ -120,6 +120,20 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  // Added function to launch the legal page
+  Future<void> _launchLegalUrl() async {
+    final Uri url = Uri.parse('https://happy234567.github.io/levelmaxing-legal/');
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open the legal page'),
+          backgroundColor: Color(0xFF1A1A1A),
+        ),
+      );
+    }
+  }
+
   Future<void> _deleteAccount() async {
     // Step 1 — confirmation dialog with type DELETE
     final TextEditingController _deleteController = TextEditingController();
@@ -482,6 +496,25 @@ class _ProfilePageState extends State<ProfilePage> {
                     label: 'Contact Us',
                     color: const Color(0xFF4FC3F7),
                     onTap: _contactUs,
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // ── Added Legal Section ──
+                  const Text(
+                    'LEGAL',
+                    style: TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2),
+                  ),
+                  const SizedBox(height: 10),
+                  _actionButton(
+                    icon: Icons.privacy_tip_outlined,
+                    label: 'Privacy Policy & Terms',
+                    color: Colors.white70,
+                    onTap: _launchLegalUrl,
                   ),
 
                   const SizedBox(height: 32),

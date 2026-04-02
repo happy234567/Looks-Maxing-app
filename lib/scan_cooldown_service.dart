@@ -8,7 +8,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 // ─────────────────────────────────────────────────────────────────────────────
 // SCAN COOLDOWN SERVICE
 // Free users  → 1 scan per 30 days
-// Premium     → 1 scan per 5 days
+// Premium     → 1 scan per 3 days
 // When cooldown ends → local notification fires
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ class ScanCooldownService {
     await prefs.setString(_kLastScanDate, now.toIso8601String());
 
     // Schedule "scan ready" notification
-    final cooldownDays = isPremium ? 5 : 30;
+    final cooldownDays = isPremium ? 3 : 30;
     final notifTime = now.add(Duration(days: cooldownDays));
     await _scheduleReadyNotification(notifTime, isPremium: isPremium);
   }
@@ -79,7 +79,7 @@ class ScanCooldownService {
     if (lastScanStr == null) return Duration.zero; // Never scanned before
 
     final lastScan = DateTime.parse(lastScanStr);
-    final cooldownDays = isPremium ? 5 : 30;
+    final cooldownDays = isPremium ? 3 : 30;
     final nextScanTime = lastScan.add(Duration(days: cooldownDays));
     final now = DateTime.now();
 
@@ -96,7 +96,7 @@ class ScanCooldownService {
     if (lastScanStr == null) return null;
 
     final lastScan = DateTime.parse(lastScanStr);
-    final cooldownDays = isPremium ? 5 : 30;
+    final cooldownDays = isPremium ? 3 : 30;
     final nextScanTime = lastScan.add(Duration(days: cooldownDays));
     final now = DateTime.now();
 
@@ -135,7 +135,7 @@ class ScanCooldownService {
       vibrationPattern: vibration,
       styleInformation: BigTextStyleInformation(
         isPremium
-            ? 'Your 5-day cooldown is over! Open the app, scan your face and check your latest results. 🏆'
+            ? 'Your 3-day cooldown is over! Open the app, scan your face and check your latest results. 🏆'
             : 'Your 30-day cooldown is over! Open the app, scan your face and check your latest results. 📸',
         contentTitle: '📸 Face Scan Available!',
         summaryText: 'Level Maxing',
@@ -149,7 +149,7 @@ class ScanCooldownService {
       _scanReadyNotifId,
       '📸 Face Scan Available!',
       isPremium
-          ? 'Your 5-day cooldown is over — scan your face now!'
+          ? 'Your 3-day cooldown is over — scan your face now!'
           : 'Your 30-day cooldown is over — scan your face now!',
       tzScheduled,
       NotificationDetails(android: androidDetails),
@@ -189,7 +189,7 @@ class ScanCooldownService {
     if (lastScanStr == null) return 1.0; // Never scanned = fully ready
 
     final lastScan = DateTime.parse(lastScanStr);
-    final cooldownDays = isPremium ? 5 : 30;
+    final cooldownDays = isPremium ? 3 : 30;
     final totalMs = Duration(days: cooldownDays).inMilliseconds;
     final elapsedMs =
         DateTime.now().difference(lastScan).inMilliseconds.clamp(0, totalMs);

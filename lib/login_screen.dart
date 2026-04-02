@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart'; // Added url_launcher
 import 'onboarding_screen.dart';
 import 'main.dart';
 import 'notification_service.dart';
@@ -57,6 +58,18 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // Added function to launch the legal page
+  Future<void> _launchLegal() async {
+    final Uri url = Uri.parse('https://happy234567.github.io/levelmaxing-legal/');
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the legal page')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -109,8 +122,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
               const SizedBox(height: 20),
-              const Text('By continuing you agree to our terms of service',
-                  style: TextStyle(color: Colors.white24, fontSize: 12)),
+              // Updated bottom text to be clickable
+              GestureDetector(
+                onTap: _launchLegal,
+                child: const Text(
+                  'By continuing you agree to our Terms of Service & Privacy Policy',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white54, 
+                    fontSize: 12,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Colors.white54,
+                  ),
+                ),
+              ),
               const SizedBox(height: 20),
             ],
           ),

@@ -248,7 +248,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Get face scans every 5 days instead of 30, plus detailed attractiveness insights.',
+                'Get face scans every 3 days instead of 30, plus detailed attractiveness insights.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
