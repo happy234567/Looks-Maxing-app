@@ -52,13 +52,40 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
+  // --- NEW: FOLLOW INSTAGRAM FUNCTION ---
+  Future<void> _followInstagram() async {
+    final Uri url = Uri.parse('https://www.instagram.com/level_max_app/');
+    try {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open Instagram')),
+      );
+    }
+  }
+
+  // --- NEW: RATE US FUNCTION ---
+  Future<void> _rateUs() async {
+    // Replace with your actual Play Store package name
+    final Uri url = Uri.parse('market://details?id=com.levelmaxing.app');
+    final Uri webUrl = Uri.parse('https://play.google.com/store/apps/details?id=com.levelmaxing.app');
+    
+    try {
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _signOut() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(children: [
           Icon(Icons.logout, color: Color(0xFFFFD700), size: 22),
           SizedBox(width: 10),
@@ -69,19 +96,16 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.white54)),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFFD700),
               foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            child: const Text('Sign Out',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -104,8 +128,6 @@ class _ProfilePageState extends State<ProfilePage> {
     final Uri emailUri = Uri(
       scheme: 'mailto',
       path: 'levelmaxing952@gmail.com',
-      queryParameters: {
-      },
     );
     try {
       await launchUrl(emailUri, mode: LaunchMode.externalApplication);
@@ -113,31 +135,26 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Could not open email app. Please email us at levelmaxing952@gmail.com'),
+          content: Text('Email us at levelmaxing952@gmail.com'),
           backgroundColor: Color(0xFF1A1A1A),
         ),
       );
     }
   }
 
-  // Added function to launch the legal page
   Future<void> _launchLegalUrl() async {
-    final Uri url = Uri.parse('https://happy234567.github.io/levelmaxing-legal/');
+    final Uri url = Uri.parse('https://happy234567.github.io/levelmax-legal/');
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not open the legal page'),
-          backgroundColor: Color(0xFF1A1A1A),
-        ),
+        const SnackBar(content: Text('Could not open the legal page')),
       );
     }
   }
 
   Future<void> _deleteAccount() async {
-    // Step 1 — confirmation dialog with type DELETE
-    final TextEditingController _deleteController = TextEditingController();
-    bool _isTypedCorrectly = false;
+    final TextEditingController deleteController = TextEditingController();
+    bool isTypedCorrectly = false;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -145,32 +162,21 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (_) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Row(children: [
             Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24),
             SizedBox(width: 10),
-            Text('Delete Account',
-                style:
-                    TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            Text('Delete Account', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           ]),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Do you really want to delete your account?',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600),
-              ),
+              const Text('Do you really want to delete your account?',
+                style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
-              const Text(
-                'This will permanently delete your account and all scan history. This cannot be undone!',
-                style: TextStyle(
-                    color: Colors.white54, fontSize: 13, height: 1.5),
-              ),
+              const Text('This will permanently delete your account and all scan history. This cannot be undone!',
+                style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.5)),
               const SizedBox(height: 20),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -182,44 +188,24 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'To confirm, type DELETE below:',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
+                    const Text('To confirm, type DELETE below:',
+                      style: TextStyle(color: Colors.white70, fontSize: 13)),
                     const SizedBox(height: 10),
                     TextField(
-                      controller: _deleteController,
+                      controller: deleteController,
                       autofocus: true,
-                      style: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 2),
+                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, letterSpacing: 2),
                       decoration: InputDecoration(
                         hintText: 'Type DELETE here',
-                        hintStyle: TextStyle(
-                            color: Colors.white24, letterSpacing: 1),
+                        hintStyle: const TextStyle(color: Colors.white24, letterSpacing: 1),
                         filled: true,
                         fillColor: Colors.white.withOpacity(0.05),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide:
-                              BorderSide(color: Colors.red.withOpacity(0.4)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Colors.red),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(
-                              color: Colors.red.withOpacity(0.3)),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       ),
                       onChanged: (val) {
                         setDialogState(() {
-                          _isTypedCorrectly = val.trim() == 'DELETE';
+                          isTypedCorrectly = val.trim() == 'DELETE';
                         });
                       },
                     ),
@@ -231,22 +217,17 @@ class _ProfilePageState extends State<ProfilePage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel',
-                  style: TextStyle(color: Colors.white54)),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
             ),
             ElevatedButton(
-              onPressed: _isTypedCorrectly
-                  ? () => Navigator.pop(context, true)
-                  : null,
+              onPressed: isTypedCorrectly ? () => Navigator.pop(context, true) : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
                 disabledBackgroundColor: Colors.red.withOpacity(0.3),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              child: const Text('Delete Forever',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text('Delete Forever', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -276,116 +257,60 @@ class _ProfilePageState extends State<ProfilePage> {
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         backgroundColor: const Color(0xFF111111),
-        title: const Text('Profile',
-            style: TextStyle(color: Color(0xFFFFD700))),
+        title: const Text('Profile', style: TextStyle(color: Color(0xFFFFD700))),
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios,
-              color: Color(0xFFFFD700), size: 18),
+          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFFD700), size: 18),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // ── Header Banner ──
+            // --- Header Banner ---
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(20, 32, 20, 28),
               decoration: BoxDecoration(
                 color: const Color(0xFF111111),
-                border: Border(
-                    bottom: BorderSide(
-                        color: const Color(0xFFFFD700).withOpacity(0.15),
-                        width: 1)),
+                border: Border(bottom: BorderSide(color: const Color(0xFFFFD700).withOpacity(0.15), width: 1)),
               ),
               child: Column(
                 children: [
-                  // Avatar with glow
                   Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFFFD700).withOpacity(0.3),
-                          blurRadius: 20,
-                          spreadRadius: 2,
-                        ),
-                      ],
+                      boxShadow: [BoxShadow(color: const Color(0xFFFFD700).withOpacity(0.3), blurRadius: 20, spreadRadius: 2)],
                     ),
                     child: CircleAvatar(
                       radius: 52,
                       backgroundColor: const Color(0xFFFFD700),
-                      backgroundImage: user?.photoURL != null
-                          ? NetworkImage(user!.photoURL!)
-                          : null,
+                      backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
                       child: user?.photoURL == null
-                          ? Text(
-                              _firstName.isNotEmpty
-                                  ? _firstName[0].toUpperCase()
-                                  : '?',
-                              style: const TextStyle(
-                                  fontSize: 42,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black),
-                            )
+                          ? Text(_firstName.isNotEmpty ? _firstName[0].toUpperCase() : '?',
+                              style: const TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.black))
                           : null,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    _username,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold),
-                  ),
+                  Text(_username, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text(
-                    _email,
-                    style: const TextStyle(
-                        color: Colors.white38, fontSize: 13),
-                  ),
+                  Text(_email, style: const TextStyle(color: Colors.white38, fontSize: 13)),
                   const SizedBox(height: 12),
-                  // Premium / Free badge
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
-                      color: isPremium
-                          ? const Color(0xFFFFD700).withOpacity(0.15)
-                          : Colors.white.withOpacity(0.06),
+                      color: isPremium ? const Color(0xFFFFD700).withOpacity(0.15) : Colors.white.withOpacity(0.06),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isPremium
-                            ? const Color(0xFFFFD700)
-                            : Colors.white24,
-                        width: 1.2,
-                      ),
+                      border: Border.all(color: isPremium ? const Color(0xFFFFD700) : Colors.white24, width: 1.2),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          isPremium
-                              ? Icons.workspace_premium
-                              : Icons.person_outline,
-                          color: isPremium
-                              ? const Color(0xFFFFD700)
-                              : Colors.white54,
-                          size: 16,
-                        ),
+                        Icon(isPremium ? Icons.workspace_premium : Icons.person_outline, color: isPremium ? const Color(0xFFFFD700) : Colors.white54, size: 16),
                         const SizedBox(width: 6),
-                        Text(
-                          isPremium ? 'Premium Member' : 'Free Member',
-                          style: TextStyle(
-                            color: isPremium
-                                ? const Color(0xFFFFD700)
-                                : Colors.white54,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
+                        Text(isPremium ? 'Premium Member' : 'Free Member',
+                          style: TextStyle(color: isPremium ? const Color(0xFFFFD700) : Colors.white54, fontWeight: FontWeight.bold, fontSize: 12)),
                       ],
                     ),
                   ),
@@ -398,15 +323,7 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Account Info ──
-                  const Text(
-                    'ACCOUNT INFO',
-                    style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2),
-                  ),
+                  const Text('ACCOUNT INFO', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
                   const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
@@ -416,81 +333,38 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     child: Column(
                       children: [
-                        _infoTile(
-                          icon: Icons.person_outline,
-                          label: 'Full Name',
-                          value: _username,
-                        ),
+                        _infoTile(icon: Icons.person_outline, label: 'Full Name', value: _username),
                         _divider(),
-                        _infoTile(
-                          icon: Icons.email_outlined,
-                          label: 'Email',
-                          value: _email,
-                        ),
+                        _infoTile(icon: Icons.email_outlined, label: 'Email', value: _email),
                         _divider(),
-                        _infoTile(
-                          icon: _gender == 'Male'
-                              ? Icons.male
-                              : Icons.female,
-                          label: 'Gender',
-                          value: _gender.isNotEmpty ? _gender : '—',
-                        ),
+                        _infoTile(icon: _gender == 'Male' ? Icons.male : Icons.female, label: 'Gender', value: _gender.isNotEmpty ? _gender : '—'),
                         _divider(),
-                        _infoTile(
-                          icon: Icons.shield_outlined,
-                          label: 'Account Status',
-                          value: isPremium ? 'Premium' : 'Free',
-                          valueColor: isPremium
-                              ? const Color(0xFFFFD700)
-                              : Colors.white54,
-                        ),
+                        _infoTile(icon: Icons.shield_outlined, label: 'Account Status', value: isPremium ? 'Premium' : 'Free',
+                          valueColor: isPremium ? const Color(0xFFFFD700) : Colors.white54),
                       ],
                     ),
                   ),
 
                   const SizedBox(height: 28),
 
-                  // ── Account Actions ──
-                  const Text(
-                    'ACCOUNT ACTIONS',
-                    style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2),
-                  ),
+                  // --- UPDATED: COMMUNITY & SUPPORT SECTION ---
+                  const Text('COMMUNITY & SUPPORT', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
                   const SizedBox(height: 10),
 
-                  // Sign Out
+                  // Rate Us
                   _actionButton(
-                    icon: Icons.logout_rounded,
-                    label: 'Sign Out',
+                    icon: Icons.star_outline_rounded,
+                    label: 'Rate Us on Play Store',
                     color: const Color(0xFFFFD700),
-                    onTap: _signOut,
+                    onTap: _rateUs,
                   ),
                   const SizedBox(height: 10),
 
-                  // Delete Account
-                  _actionButton(
-                    icon: Icons.delete_forever_rounded,
-                    label: 'Delete Account',
-                    color: Colors.red,
-                    onTap: _deleteAccount,
-                    isDestructive: true,
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  // ── Contact Us ──
-                  const Text(
-                    'SUPPORT',
-                    style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2),
-                  ),
+                  // Professional Instagram Button
+                  _instagramButton(),
                   const SizedBox(height: 10),
+
+                  // Contact Us
                   _actionButton(
                     icon: Icons.mail_outline_rounded,
                     label: 'Contact Us',
@@ -500,36 +374,25 @@ class _ProfilePageState extends State<ProfilePage> {
 
                   const SizedBox(height: 28),
 
-                  // ── Added Legal Section ──
-                  const Text(
-                    'LEGAL',
-                    style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2),
-                  ),
+                  const Text('ACCOUNT ACTIONS', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
                   const SizedBox(height: 10),
-                  _actionButton(
-                    icon: Icons.privacy_tip_outlined,
-                    label: 'Privacy Policy & Terms',
-                    color: Colors.white70,
-                    onTap: _launchLegalUrl,
-                  ),
+                  _actionButton(icon: Icons.logout_rounded, label: 'Sign Out', color: const Color(0xFFFFD700), onTap: _signOut),
+                  const SizedBox(height: 10),
+                  _actionButton(icon: Icons.delete_forever_rounded, label: 'Delete Account', color: Colors.red, onTap: _deleteAccount, isDestructive: true),
+
+                  const SizedBox(height: 28),
+
+                  const Text('LEGAL', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+                  const SizedBox(height: 10),
+                  _actionButton(icon: Icons.privacy_tip_outlined, label: 'Privacy Policy & Terms', color: Colors.white70, onTap: _launchLegalUrl),
 
                   const SizedBox(height: 32),
-
-                  // ── App info ──
-                  Center(
+                  const Center(
                     child: Column(
                       children: [
-                        const Text('Level Maxing',
-                            style: TextStyle(
-                                color: Colors.white24, fontSize: 12)),
-                        const SizedBox(height: 2),
-                        const Text('v1.0.0',
-                            style: TextStyle(
-                                color: Colors.white12, fontSize: 11)),
+                        Text('Level Maxing', style: TextStyle(color: Colors.white24, fontSize: 12)),
+                        SizedBox(height: 2),
+                        Text('v1.0.0', style: TextStyle(color: Colors.white12, fontSize: 11)),
                       ],
                     ),
                   ),
@@ -543,15 +406,9 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _divider() =>
-      const Divider(height: 1, color: Colors.white10, indent: 56);
+  Widget _divider() => const Divider(height: 1, color: Colors.white10, indent: 56);
 
-  Widget _infoTile({
-    required IconData icon,
-    required String label,
-    required String value,
-    Color? valueColor,
-  }) {
+  Widget _infoTile({required IconData icon, required String label, required String value, Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
@@ -559,10 +416,7 @@ class _ProfilePageState extends State<ProfilePage> {
           Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFD700).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: const Color(0xFFFFD700).withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, color: const Color(0xFFFFD700), size: 18),
           ),
           const SizedBox(width: 14),
@@ -570,17 +424,9 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: const TextStyle(
-                        color: Colors.white38,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500)),
+                Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 2),
-                Text(value,
-                    style: TextStyle(
-                        color: valueColor ?? Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600)),
+                Text(value, style: TextStyle(color: valueColor ?? Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -589,41 +435,56 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _actionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-    bool isDestructive = false,
-  }) {
+  // --- CUSTOM PROFESSIONALLY STYLED INSTAGRAM BUTTON ---
+  Widget _instagramButton() {
+    return GestureDetector(
+      onTap: _followInstagram,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF833AB4).withOpacity(0.15),
+              const Color(0xFFFD1D1D).withOpacity(0.15),
+              const Color(0xFFFCAF45).withOpacity(0.15),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE1306C).withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.camera_alt_outlined, color: Color(0xFFE1306C), size: 22),
+            const SizedBox(width: 14),
+            const Text('Follow us on Instagram',
+              style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Icon(Icons.chevron_right, color: const Color(0xFFE1306C).withOpacity(0.5), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actionButton({required IconData icon, required String label, required Color color, required VoidCallback onTap, bool isDestructive = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         decoration: BoxDecoration(
-          color: isDestructive
-              ? Colors.red.withOpacity(0.06)
-              : color.withOpacity(0.06),
+          color: isDestructive ? Colors.red.withOpacity(0.06) : color.withOpacity(0.06),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDestructive
-                ? Colors.red.withOpacity(0.3)
-                : color.withOpacity(0.3),
-          ),
+          border: Border.all(color: isDestructive ? Colors.red.withOpacity(0.3) : color.withOpacity(0.3)),
         ),
         child: Row(
           children: [
             Icon(icon, color: color, size: 22),
             const SizedBox(width: 14),
-            Text(
-              label,
-              style: TextStyle(
-                  color: color,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600),
-            ),
+            Text(label, style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w600)),
             const Spacer(),
             Icon(Icons.chevron_right, color: color.withOpacity(0.5), size: 20),
           ],
