@@ -26,10 +26,7 @@ void main() async {
   await Firebase.initializeApp();
 
   // 3. NOW TURN ON CRASHLYTICS
-  // Pass all uncaught "fatal" errors from the framework to Crashlytics
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-
-  // Pass all uncaught asynchronous errors that aren't handled by the Flutter framework to Crashlytics
   PlatformDispatcher.instance.onError = (error, stack) {
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
     return true;
@@ -37,36 +34,48 @@ void main() async {
 
   // 4. INITIALIZE ALL YOUR APP SERVICES
   await NotificationService.initialize();
-  await LockInNotificationService.initialize(); // ← NEW
+  await LockInNotificationService.initialize(); 
   await ScanCooldownService.initialize();
   
-  // Make sure billing initializes so users can see your paywall!
-  await BillingService().initialize(); 
+  // Wrap billing in a try-catch so it doesn't crash the app if Google Play is unreachable offline
+  try {
+    await BillingService().initialize(); 
+  } catch (e) {
+    debugPrint("Billing Service failed to initialize (likely offline): $e");
+  }
 
   // 5. CHECK LOGGED IN USER
   final user = FirebaseAuth.instance.currentUser;
   Widget initialScreen = const LoginScreen();
 
   if (user != null) {
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
+    try {
+      // Attempt to fetch from Firestore. If offline, this will throw an error or use cache.
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get(const GetOptions(source: Source.serverAndCache)); // Forces it to look at cache if offline
 
-    if (doc.exists) {
-      final data = doc.data()!;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('username', data['username'] ?? '');
-      await prefs.setString('firstName', data['firstName'] ?? '');
-      await prefs.setString('gender', data['gender'] ?? '');
-
-      // Assuming MainNavigation is defined further down in your file
+      if (doc.exists) {
+        final data = doc.data()!;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('username', data['username'] ?? '');
+        await prefs.setString('firstName', data['firstName'] ?? '');
+        await prefs.setString('gender', data['gender'] ?? '');
+        
+        initialScreen = const MainNavigation();
+      } else {
+        initialScreen = const OnboardingScreen();
+      }
+    } catch (e) {
+      debugPrint("Firestore fetch failed (likely offline): $e");
+      // FALLBACK: The user is authenticated (user != null), so let them into the app 
+      // even if we can't reach the database right now. They will see cached data.
       initialScreen = const MainNavigation();
-    } else {
-      initialScreen = const OnboardingScreen();
     }
   }
 
+  // 6. RUN THE APP
   runApp(MyApp(initialScreen: initialScreen));
 }
 

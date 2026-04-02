@@ -113,6 +113,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (confirm == true) {
       await NotificationService.removeTokenOnLogout();
+      // clear local data and sign out from Firebase and Google
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
       await GoogleSignIn().signOut();
       await FirebaseAuth.instance.signOut();
       if (!mounted) return;
