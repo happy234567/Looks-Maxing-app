@@ -1329,8 +1329,11 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
                             isToday: isToday,
                             onSave: (updated) {
                               final idx = data.days.indexWhere((d) => d.dayNumber == dayNum);
-                              if (idx >= 0) data.days[idx] = updated;
-                              else data.days.add(updated);
+                              if (idx >= 0) {
+                                data.days[idx] = updated;
+                              } else {
+                                data.days.add(updated);
+                              }
                               onSave();
                             },
                           )));
@@ -1705,7 +1708,9 @@ class _DayScreenState extends State<_DayScreen> {
                     done: isDone,
                     readOnly: !widget.isToday,
                     onToggle: (v) => setState(() {
-                      while (_log.customCompleted.length <= i) _log.customCompleted.add(false);
+                      while (_log.customCompleted.length <= i) {
+                        _log.customCompleted.add(false);
+                      }
                       _log.customCompleted[i] = v;
                     }),
                   );
@@ -1767,10 +1772,10 @@ class _DayScreenState extends State<_DayScreen> {
 
 Route<T> _slideRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
-    pageBuilder: (_, __, ___) => page,
+    pageBuilder: (_, _, _) => page,
     transitionDuration: const Duration(milliseconds: 320),
     reverseTransitionDuration: const Duration(milliseconds: 280),
-    transitionsBuilder: (_, animation, __, child) {
+    transitionsBuilder: (_, animation, _, child) {
       final tween = Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
           .chain(CurveTween(curve: Curves.easeOutCubic));
       return SlideTransition(position: animation.drive(tween), child: child);
@@ -1808,7 +1813,9 @@ class _EditTasksScreenState extends State<_EditTasksScreen> {
   @override
   void dispose() {
     _pageCtrl.dispose();
-    for (final c in _taskCtrls) c.dispose();
+    for (final c in _taskCtrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 
