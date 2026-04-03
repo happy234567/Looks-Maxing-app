@@ -60,12 +60,13 @@ class BillingService extends ChangeNotifier {
   StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
 
   bool isStoreAvailable   = false;
-  bool isLoadingProducts  = false;   // true while queryProductDetails runs
-  bool isProcessingPurchase = false; // true while a purchase is in-flight
-  String? productsLoadError;         // non-null if product fetch failed
+  bool isLoadingProducts  = false;
+  bool isProcessingPurchase = false;
+  String? productsLoadError;
 
   List<ProductDetails> products = [];
   bool isPremium = false;
+  bool isLongTermPremium = false;
 
   // Broadcast the last purchase outcome so UI widgets can react
   PurchaseOutcome lastPurchaseOutcome = PurchaseOutcome.none;
@@ -209,17 +210,20 @@ class BillingService extends ChangeNotifier {
     }
   }
 
-  // ── Deliver Product ────────────────────────────────────────────────────────
   Future<void> _deliverProduct(PurchaseDetails purchase) async {
     isPremium = true;
     isProcessingPurchase = false;
     lastPurchaseOutcome = PurchaseOutcome.success;
+
+    // Check if this is a 6-month or 12-month plan
+    final isLongTermPlan = purchase.productID == sixMonthId || 
+                           purchase.productID == yearlyId;
+
     notifyListeners();
-    await _updatePremiumInFirebase(true);
+    await _updatePremiumInFirebase(true, isLongTermPlan: isLongTermPlan);
   }
 
-  // ── Firebase Helpers ───────────────────────────────────────────────────────
-  Future<void> _updatePremiumInFirebase(bool premium) async {
+  Future<void> _updatePremiumInFirebase(bool premium, {bool isLongTermPlan = false}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     try {
@@ -228,6 +232,7 @@ class BillingService extends ChangeNotifier {
           .doc(user.uid)
           .set({
         'isPremium': premium,
+        'isLongTermPremium': isLongTermPlan,
         'premiumUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
@@ -243,9 +248,9 @@ class BillingService extends ChangeNotifier {
           .collection('users')
           .doc(user.uid)
           .get();
-      if (doc.exists &&
-          doc.data()!['isPremium'] == true) {
+      if (doc.exists && doc.data()!['isPremium'] == true) {
         isPremium = true;
+        isLongTermPremium = doc.data()!['isLongTermPremium'] == true;
         notifyListeners();
       }
     } catch (e) {

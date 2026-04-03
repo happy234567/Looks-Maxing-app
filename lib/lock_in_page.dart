@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'lock_in_notification_service.dart';
+import 'billing_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -1079,9 +1080,9 @@ class _Dashboard extends StatefulWidget {
 class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
-
   late AnimationController _glowCtrl;
   late Animation<double> _glowAnim;
+  final BillingService _billing = BillingService();
 
   @override
   void initState() {
@@ -1249,9 +1250,9 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
         ),
 
         // Premium Discipline Streak Card
-        if (data.isPremiumUser) 
+        if (_billing.isLongTermPremium) 
           _buildPremiumCard(context)
-        else if (data.premiumStartDate != null) 
+        else if (data.premiumStartDate != null && !_billing.isLongTermPremium) 
           _buildPremiumExpiredCard(context),
 
         // "Set Weekly Tasks" button above day list
@@ -1492,7 +1493,8 @@ class _DayScreenState extends State<_DayScreen> {
     final pRate = widget.lockInData.calculatePercentage(completedP, totalPastP);
 
     // Only run this check if they just saved Premium Day 150 (or later) and completed it.
-    if (pDay >= 150 && pRate >= 0.8) {
+    final billingCheck = BillingService();
+    if (pDay >= 150 && pRate >= 0.8 && billingCheck.isLongTermPremium) {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       final email = FirebaseAuth.instance.currentUser?.email;
 
