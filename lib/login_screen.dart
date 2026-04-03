@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -36,8 +38,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await FirebaseAuth.instance.signInWithCredential(credential);
 
-      // Save notification token for this user
-      await NotificationService.saveTokenAfterLogin();
+      // Save notification token for this user (with timeout)
+      try {
+        await NotificationService.saveTokenAfterLogin().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => debugPrint("Notification token save timed out - offline?"),
+        );
+      } catch (e) {
+        debugPrint("Notification save failed (offline?): $e");
+      }
 
       // Check Firestore to see if user has completed onboarding
       final user = FirebaseAuth.instance.currentUser;
@@ -46,33 +55,68 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      try {
+        // Add timeout to prevent hanging when offline
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get()
+            .timeout(
+              const Duration(seconds: 5),
+              onTimeout: () {
+                debugPrint("Firestore timeout during login - checking local cache");
+                throw Exception('Firestore timeout');
+              },
+            );
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      // Check if document exists AND has username field (means onboarding completed)
-      if (doc.exists && doc.data()?['username'] != null && doc.data()?['username'] != '') {
-        // User has completed onboarding, load their data
-        final data = doc.data()!;
+        // Check if document exists AND has username field (means onboarding completed)
+        if (doc.exists && doc.data()?['username'] != null && doc.data()?['username'] != '') {
+          // User has completed onboarding, load their data
+          final data = doc.data()!;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('username', data['username'] ?? '');
+          await prefs.setString('firstName', data['firstName'] ?? '');
+          await prefs.setString('gender', data['gender'] ?? '');
+
+          Navigator.pushReplacement(context,
+              MaterialPageRoute(builder: (_) => const MainNavigation()));
+        } else {
+          // User hasn't completed onboarding yet (new user or incomplete profile)
+          Navigator.pushReplacement(context,
+              MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+        }
+      } catch (e) {
+        // Offline or timeout - check SharedPreferences for cached data
+        debugPrint("Firestore check failed: $e");
+        
+        if (!mounted) return;
+        
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('username', data['username'] ?? '');
-        await prefs.setString('firstName', data['firstName'] ?? '');
-        await prefs.setString('gender', data['gender'] ?? '');
-
-        // ignore: use_build_context_synchronously
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const MainNavigation()));
-      } else {
-        // User hasn't completed onboarding yet (new user or incomplete profile)
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+        final hasUsername = prefs.getString('username') != null && prefs.getString('username') != '';
+        
+        if (hasUsername) {
+          // User has logged in before - use cached data
+          Navigator.pushReplacement(context,
+              MaterialPageRoute(builder: (_) => const MainNavigation()));
+        } else {
+          // First time login while offline - show error
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No internet connection. Please connect and try again.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+          setState(() => _isLoading = false);
+          // Sign them out since we can't complete first-time setup offline
+          await FirebaseAuth.instance.signOut();
+          await GoogleSignIn().signOut();
+        }
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );

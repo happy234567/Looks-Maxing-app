@@ -22,41 +22,100 @@ void main() async {
   // 1. WAKE UP FLUTTER FIRST
   WidgetsFlutterBinding.ensureInitialized();
   
-  // 2. WAKE UP FIREBASE SECOND
-  await Firebase.initializeApp();
+  // 2. WAKE UP FIREBASE SECOND (with timeout)
+  try {
+    await Firebase.initializeApp().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        debugPrint("Firebase initialization timed out - running in offline mode");
+        throw Exception('Firebase timeout');
+      },
+    );
+    debugPrint("Firebase initialized successfully");
+  } catch (e) {
+    debugPrint("Firebase initialization failed: $e - App will run in limited offline mode");
+  }
 
-  // 3. NOW TURN ON CRASHLYTICS
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-  PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true;
-  };
+  // 2.5 ENABLE FIRESTORE OFFLINE PERSISTENCE
+  try {
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+    debugPrint("Firestore offline persistence enabled");
+  } catch (e) {
+    debugPrint("Firestore persistence setup failed: $e");
+  }
 
-  // 4. INITIALIZE ALL YOUR APP SERVICES
-  await NotificationService.initialize();
-  await LockInNotificationService.initialize(); 
-  await ScanCooldownService.initialize();
+  // 3. NOW TURN ON CRASHLYTICS (with error handling)
+  try {
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+  } catch (e) {
+    debugPrint("Crashlytics setup failed (offline?): $e");
+  }
+
+  // 4. INITIALIZE ALL YOUR APP SERVICES (with error handling)
+  try {
+    await NotificationService.initialize().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => debugPrint("Notification service timed out"),
+    );
+  } catch (e) {
+    debugPrint("Notification service failed: $e");
+  }
+
+  try {
+    await LockInNotificationService.initialize().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => debugPrint("LockIn notification service timed out"),
+    );
+  } catch (e) {
+    debugPrint("LockIn notification service failed: $e");
+  }
+
+  try {
+    await ScanCooldownService.initialize().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => debugPrint("Scan cooldown service timed out"),
+    );
+  } catch (e) {
+    debugPrint("Scan cooldown service failed: $e");
+  }
   
   // Wrap billing in a try-catch so it doesn't crash the app if Google Play is unreachable offline
   try {
-    await BillingService().initialize(); 
+    await BillingService().initialize().timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => debugPrint("Billing service timed out"),
+    );
   } catch (e) {
     debugPrint("Billing Service failed to initialize (likely offline): $e");
   }
 
-  // 5. CHECK LOGGED IN USER
+  // 5. CHECK LOGGED IN USER (with aggressive offline handling)
   final user = FirebaseAuth.instance.currentUser;
   Widget initialScreen = const LoginScreen();
 
   if (user != null) {
     try {
-      // Attempt to fetch from Firestore. If offline, this will throw an error or use cache.
+      // Add timeout to prevent hanging when offline - only wait 3 seconds
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .get(const GetOptions(source: Source.serverAndCache)); // Forces it to look at cache if offline
+          .get(const GetOptions(source: Source.cache)) // Try cache first
+          .timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              debugPrint("Firestore timeout - using local cache");
+              throw Exception('Firestore timeout');
+            },
+          );
 
-      if (doc.exists) {
+      if (doc.exists && doc.data()?['username'] != null && doc.data()?['username'] != '') {
         final data = doc.data()!;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('username', data['username'] ?? '');
@@ -69,9 +128,20 @@ void main() async {
       }
     } catch (e) {
       debugPrint("Firestore fetch failed (likely offline): $e");
-      // FALLBACK: The user is authenticated (user != null), so let them into the app 
-      // even if we can't reach the database right now. They will see cached data.
-      initialScreen = const MainNavigation();
+      
+      // FALLBACK: Check if user has data in SharedPreferences (cached locally)
+      final prefs = await SharedPreferences.getInstance();
+      final hasUsername = prefs.getString('username') != null && prefs.getString('username') != '';
+      
+      if (hasUsername) {
+        // User has logged in before and we have cached data
+        debugPrint("Using cached user data from SharedPreferences");
+        initialScreen = const MainNavigation();
+      } else {
+        // No cached data - send to login screen
+        debugPrint("No cached data - showing login screen");
+        initialScreen = const LoginScreen();
+      }
     }
   }
 
