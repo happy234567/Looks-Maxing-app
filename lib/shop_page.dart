@@ -199,7 +199,7 @@ class _ShopPageState extends State<ShopPage>
                 shape: BoxShape.circle,
                 color: const Color(0xFF1A1A1A),
                 border: Border.all(
-                    color: const Color(0xFFFFD700).withOpacity(0.3), width: 2),
+                    color: const Color(0xFFFFD700).withValues(alpha:0.3), width: 2),
               ),
               child: const Center(
                 child: Text('🛍️', style: TextStyle(fontSize: 44)),
@@ -230,11 +230,11 @@ class _ShopPageState extends State<ShopPage>
                           color: const Color(0xFF1A1A1A),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                              color: const Color(0xFFFFD700).withOpacity(0.2)),
+                              color: const Color(0xFFFFD700).withValues(alpha:0.2)),
                         ),
                         child: Text(cat,
                             style: TextStyle(
-                                color: const Color(0xFFFFD700).withOpacity(0.6),
+                                color: const Color(0xFFFFD700).withValues(alpha:0.6),
                                 fontSize: 12)),
                       ))
                   .toList(),
@@ -313,7 +313,7 @@ class _ShopPageState extends State<ShopPage>
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.4)),
+          border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.4)),
         ),
         child: Row(children: [
           Container(

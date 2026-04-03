@@ -311,7 +311,7 @@ class _ProgressPageState extends State<ProgressPage>
         color: const Color(0xFF111111),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-            color: const Color(0xFFFFD700).withOpacity(0.2),
+            color: const Color(0xFFFFD700).withValues(alpha:0.2),
             width: 1.5),
       ),
       child: Column(
@@ -379,13 +379,13 @@ class _ProgressPageState extends State<ProgressPage>
                             color: (imp >= 0
                                     ? const Color(0xFF8BC34A)
                                     : Colors.redAccent)
-                                .withOpacity(0.12),
+                                .withValues(alpha:0.12),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                                 color: (imp >= 0
                                         ? const Color(0xFF8BC34A)
                                         : Colors.redAccent)
-                                    .withOpacity(0.35)),
+                                    .withValues(alpha:0.35)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -452,9 +452,9 @@ class _ProgressPageState extends State<ProgressPage>
         padding:
             const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
+          color: color.withValues(alpha:0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: color.withValues(alpha:0.2)),
         ),
         child: Column(
           children: [
@@ -488,7 +488,7 @@ class _ProgressPageState extends State<ProgressPage>
       decoration: BoxDecoration(
         color: const Color(0xFF111111),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha:0.06)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -598,7 +598,7 @@ class _ProgressPageState extends State<ProgressPage>
       decoration: BoxDecoration(
         color: const Color(0xFF111111),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha:0.06)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -693,8 +693,8 @@ class _ProgressPageState extends State<ProgressPage>
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: isLatest
-                ? const Color(0xFFFFD700).withOpacity(0.3)
-                : Colors.white.withOpacity(0.06),
+                ? const Color(0xFFFFD700).withValues(alpha:0.3)
+                : Colors.white.withValues(alpha:0.06),
           ),
         ),
         child: Row(
@@ -756,7 +756,7 @@ class _ProgressPageState extends State<ProgressPage>
                       const SizedBox(width: 8),
                       Text(_getScoreLabel(overall),
                           style: TextStyle(
-                              color: color.withOpacity(0.8),
+                              color: color.withValues(alpha:0.8),
                               fontSize: 12)),
                       const Spacer(),
                       if (diff != null)
@@ -767,13 +767,13 @@ class _ProgressPageState extends State<ProgressPage>
                             color: (diff >= 0
                                     ? const Color(0xFF8BC34A)
                                     : Colors.redAccent)
-                                .withOpacity(0.12),
+                                .withValues(alpha:0.12),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                                 color: (diff >= 0
                                         ? const Color(0xFF8BC34A)
                                         : Colors.redAccent)
-                                    .withOpacity(0.35)),
+                                    .withValues(alpha:0.35)),
                           ),
                           child: Text(
                             '${diff >= 0 ? '+' : ''}$diff',
@@ -870,12 +870,12 @@ class _AnimatedBarState extends State<_AnimatedBar>
     if (widget.heightOverride != null) {
       return AnimatedBuilder(
         animation: _anim,
-        builder: (_, __) => Container(
+        builder: (_, _) => Container(
           height: widget.heightOverride! * _anim.value,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                widget.color.withOpacity(0.5),
+                widget.color.withValues(alpha:0.5),
                 widget.color,
               ],
               begin: Alignment.bottomCenter,
@@ -888,11 +888,11 @@ class _AnimatedBarState extends State<_AnimatedBar>
     }
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) => ClipRRect(
+      builder: (_, _) => ClipRRect(
         borderRadius: BorderRadius.circular(widget.height),
         child: LinearProgressIndicator(
           value: _anim.value,
-          backgroundColor: Colors.white.withOpacity(0.07),
+          backgroundColor: Colors.white.withValues(alpha:0.07),
           valueColor: AlwaysStoppedAnimation(widget.color),
           minHeight: widget.height,
         ),
@@ -943,7 +943,7 @@ class _AnimatedCircularBarState extends State<_AnimatedCircularBar>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) => CircularProgressIndicator(
+      builder: (_, _) => CircularProgressIndicator(
         value: _anim.value,
         strokeWidth: 4,
         backgroundColor: Colors.white10,

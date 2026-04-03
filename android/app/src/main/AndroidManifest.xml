@@ -21,7 +21,7 @@
     <uses-permission android:name="com.android.vending.BILLING" />
 
     <application
-        android:label="level_maxing"
+        android:label="Level Max"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false">

@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:level_maxing/guide_content.dart';
@@ -203,7 +205,7 @@ class _GuidePageState extends State<GuidePage>
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFFFFD700).withOpacity(0.35),
+          color: const Color(0xFFFFD700).withValues(alpha:0.35),
           width: 1,
         ),
       ),
@@ -213,10 +215,10 @@ class _GuidePageState extends State<GuidePage>
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFD700).withOpacity(0.15),
+              color: const Color(0xFFFFD700).withValues(alpha:0.15),
               shape: BoxShape.circle,
               border: Border.all(
-                  color: const Color(0xFFFFD700).withOpacity(0.4)),
+                  color: const Color(0xFFFFD700).withValues(alpha:0.4)),
             ),
             child: const Center(
                 child: Text('👑', style: TextStyle(fontSize: 20))),
@@ -249,10 +251,10 @@ class _GuidePageState extends State<GuidePage>
             padding: const EdgeInsets.symmetric(
                 horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFD700).withOpacity(0.15),
+              color: const Color(0xFFFFD700).withValues(alpha:0.15),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                  color: const Color(0xFFFFD700).withOpacity(0.4)),
+                  color: const Color(0xFFFFD700).withValues(alpha:0.4)),
             ),
             child: const Row(
               children: [
@@ -302,12 +304,12 @@ class _GuidePageState extends State<GuidePage>
           color: const Color(0xFF1A1200),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: const Color(0xFFFFD700).withOpacity(0.5),
+            color: const Color(0xFFFFD700).withValues(alpha:0.5),
             width: 1.2,
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFFFD700).withOpacity(0.08),
+              color: const Color(0xFFFFD700).withValues(alpha:0.08),
               blurRadius: 16,
               spreadRadius: 1,
             ),
@@ -384,7 +386,7 @@ class _GuidePageState extends State<GuidePage>
             padding:
                 const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha:0.15),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
@@ -418,7 +420,7 @@ class _GuidePageState extends State<GuidePage>
               color: const Color(0xFF1A1200),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                  color: const Color(0xFFFFD700).withOpacity(0.4)),
+                  color: const Color(0xFFFFD700).withValues(alpha:0.4)),
             ),
             child: const Text(
               'Coming Soon',
@@ -443,7 +445,7 @@ class _GuidePageState extends State<GuidePage>
       decoration: BoxDecoration(
         color: const Color(0xFF111111),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha:0.06)),
       ),
       child: Column(children: [
         const Text('📚', style: TextStyle(fontSize: 28)),
@@ -462,7 +464,7 @@ class _GuidePageState extends State<GuidePage>
           padding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFD700).withOpacity(0.1),
+            color: const Color(0xFFFFD700).withValues(alpha:0.1),
             borderRadius: BorderRadius.circular(20),
           ),
           child: const Text(
@@ -531,21 +533,21 @@ class _ArticleCardState extends State<_ArticleCard> {
             // Glowing gold border for premium, subtle white for free
             border: Border.all(
               color: isPremium
-                  ? const Color(0xFFFFD700).withOpacity(_pressed ? 0.8 : 0.55)
-                  : Colors.white.withOpacity(_pressed ? 0.1 : 0.06),
+                  ? const Color(0xFFFFD700).withValues(alpha:_pressed ? 0.8 : 0.55)
+                  : Colors.white.withValues(alpha:_pressed ? 0.1 : 0.06),
               width: isPremium ? 1.5 : 1,
             ),
             // Glow shadow only for premium
             boxShadow: isPremium
                 ? [
                     BoxShadow(
-                      color: const Color(0xFFFFD700).withOpacity(0.15),
+                      color: const Color(0xFFFFD700).withValues(alpha:0.15),
                       blurRadius: 12,
                       spreadRadius: 0,
                       offset: const Offset(0, 2),
                     ),
                     BoxShadow(
-                      color: const Color(0xFFFFD700).withOpacity(0.06),
+                      color: const Color(0xFFFFD700).withValues(alpha:0.06),
                       blurRadius: 24,
                       spreadRadius: 2,
                     ),
@@ -566,7 +568,7 @@ class _ArticleCardState extends State<_ArticleCard> {
                   borderRadius: BorderRadius.circular(13),
                   border: isPremium
                       ? Border.all(
-                          color: const Color(0xFFFFD700).withOpacity(0.2),
+                          color: const Color(0xFFFFD700).withValues(alpha:0.2),
                           width: 1)
                       : null,
                 ),
@@ -588,11 +590,11 @@ class _ArticleCardState extends State<_ArticleCard> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFD700).withOpacity(0.15),
+                          color: const Color(0xFFFFD700).withValues(alpha:0.15),
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
                               color:
-                                  const Color(0xFFFFD700).withOpacity(0.3),
+                                  const Color(0xFFFFD700).withValues(alpha:0.3),
                               width: 0.8),
                         ),
                         child: const Text(
@@ -636,10 +638,10 @@ class _ArticleCardState extends State<_ArticleCard> {
                 height: 32,
                 decoration: isPremium
                     ? BoxDecoration(
-                        color: const Color(0xFFFFD700).withOpacity(0.1),
+                        color: const Color(0xFFFFD700).withValues(alpha:0.1),
                         shape: BoxShape.circle,
                         border: Border.all(
-                            color: const Color(0xFFFFD700).withOpacity(0.3)),
+                            color: const Color(0xFFFFD700).withValues(alpha:0.3)),
                       )
                     : null,
                 child: Center(
@@ -726,15 +728,15 @@ class _ArticleScreenState extends State<_ArticleScreen> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    const Color(0xFFFFD700).withOpacity(0.13),
-                    const Color(0xFFFFD700).withOpacity(0.04),
+                    const Color(0xFFFFD700).withValues(alpha:0.13),
+                    const Color(0xFFFFD700).withValues(alpha:0.04),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                    color: const Color(0xFFFFD700).withOpacity(0.35)),
+                    color: const Color(0xFFFFD700).withValues(alpha:0.35)),
               ),
               child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -790,7 +792,7 @@ class _ArticleScreenState extends State<_ArticleScreen> {
               height: 2,
               width: 40,
               decoration: BoxDecoration(
-                color: s.accentColor.withOpacity(0.5),
+                color: s.accentColor.withValues(alpha:0.5),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -802,11 +804,11 @@ class _ArticleScreenState extends State<_ArticleScreen> {
                   margin: const EdgeInsets.only(bottom: 12, top: 4),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFD700).withOpacity(0.08),
+                    color: const Color(0xFFFFD700).withValues(alpha:0.08),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                         color:
-                            const Color(0xFFFFD700).withOpacity(0.4)),
+                            const Color(0xFFFFD700).withValues(alpha:0.4)),
                   ),
                   child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1131,7 +1133,7 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: Colors.white.withValues(alpha:0.04),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white10),
       ),
@@ -1205,13 +1207,13 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFFFFD700).withOpacity(0.12),
-            const Color(0xFFFF8C00).withOpacity(0.06),
+            const Color(0xFFFFD700).withValues(alpha:0.12),
+            const Color(0xFFFF8C00).withValues(alpha:0.06),
           ],
         ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-            color: const Color(0xFFFFD700).withOpacity(0.4)),
+            color: const Color(0xFFFFD700).withValues(alpha:0.4)),
       ),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1284,12 +1286,12 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
             const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isBest
-              ? const Color(0xFFFFD700).withOpacity(0.15)
-              : Colors.white.withOpacity(0.04),
+              ? const Color(0xFFFFD700).withValues(alpha:0.15)
+              : Colors.white.withValues(alpha:0.04),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isBest
-                ? const Color(0xFFFFD700).withOpacity(0.7)
+                ? const Color(0xFFFFD700).withValues(alpha:0.7)
                 : Colors.white12,
             width: isBest ? 1.5 : 1,
           ),
@@ -1337,7 +1339,7 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: Colors.white.withValues(alpha:0.04),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white10),
       ),

@@ -388,13 +388,13 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isPopular
-              ? const Color(0xFFFFD700).withOpacity(0.15)
-              : Colors.white.withOpacity(0.05),
+              ? const Color(0xFFFFD700).withValues(alpha:0.15)
+              : Colors.white.withValues(alpha:0.05),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
               color: isPopular
                   ? const Color(0xFFFFD700)
-                  : Colors.white.withOpacity(0.1),
+                  : Colors.white.withValues(alpha:0.1),
               width: isPopular ? 2 : 1),
         ),
         child: Row(
@@ -460,7 +460,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
       decoration: BoxDecoration(
         color: const Color(0xFF111111),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: barColor.withOpacity(0.3)),
+        border: Border.all(color: barColor.withValues(alpha:0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -514,10 +514,10 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFD700).withOpacity(0.1),
+                  color: const Color(0xFFFFD700).withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                      color: const Color(0xFFFFD700).withOpacity(0.4)),
+                      color: const Color(0xFFFFD700).withValues(alpha:0.4)),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
@@ -609,7 +609,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                     backgroundColor: const Color(0xFFFFD700),
                     foregroundColor: Colors.black,
                     disabledBackgroundColor:
-                        const Color(0xFFFFD700).withOpacity(0.3),
+                        const Color(0xFFFFD700).withValues(alpha:0.3),
                     disabledForegroundColor: Colors.black45,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
@@ -679,7 +679,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                   ),
                   border: Border(
                       top: BorderSide(
-                          color: const Color(0xFFFFD700).withOpacity(0.5),
+                          color: const Color(0xFFFFD700).withValues(alpha:0.5),
                           width: 1)),
                 ),
                 child: const Row(
@@ -726,9 +726,9 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.06),
+          color: iconColor.withValues(alpha:0.06),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor.withOpacity(0.25)),
+          border: Border.all(color: borderColor.withValues(alpha:0.25)),
         ),
         child: Row(
           children: [
@@ -736,7 +736,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.12),
+                color: iconColor.withValues(alpha:0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: iconColor, size: 22),
@@ -754,13 +754,13 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                   const SizedBox(height: 2),
                   Text(subtitle,
                       style: TextStyle(
-                          color: Colors.white.withOpacity(0.4),
+                          color: Colors.white.withValues(alpha:0.4),
                           fontSize: 12)),
                 ],
               ),
             ),
             Icon(Icons.arrow_forward_ios_rounded,
-                color: iconColor.withOpacity(0.6), size: 15),
+                color: iconColor.withValues(alpha:0.6), size: 15),
           ],
         ),
       ),
@@ -802,10 +802,10 @@ class AskCoachPage extends StatelessWidget {
                 width: 90,
                 height: 90,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF9C6FFF).withOpacity(0.12),
+                  color: const Color(0xFF9C6FFF).withValues(alpha:0.12),
                   shape: BoxShape.circle,
                   border: Border.all(
-                      color: const Color(0xFF9C6FFF).withOpacity(0.4),
+                      color: const Color(0xFF9C6FFF).withValues(alpha:0.4),
                       width: 2),
                 ),
                 child: const Icon(Icons.support_agent_rounded,
@@ -831,10 +831,10 @@ class AskCoachPage extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 20, vertical: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF9C6FFF).withOpacity(0.1),
+                  color: const Color(0xFF9C6FFF).withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(30),
                   border: Border.all(
-                      color: const Color(0xFF9C6FFF).withOpacity(0.3)),
+                      color: const Color(0xFF9C6FFF).withValues(alpha:0.3)),
                 ),
                 child: const Text(
                   '🚀  Stay tuned for updates',
@@ -887,10 +887,10 @@ class HowToScanPage extends StatelessWidget {
                     width: 64,
                     height: 64,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF4FC3F7).withOpacity(0.12),
+                      color: const Color(0xFF4FC3F7).withValues(alpha:0.12),
                       shape: BoxShape.circle,
                       border: Border.all(
-                          color: const Color(0xFF4FC3F7).withOpacity(0.4),
+                          color: const Color(0xFF4FC3F7).withValues(alpha:0.4),
                           width: 1.5),
                     ),
                     child: const Icon(Icons.camera_alt_outlined,
@@ -983,9 +983,9 @@ class HowToScanPage extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.06),
+        color: color.withValues(alpha:0.06),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha:0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1034,9 +1034,9 @@ class HowToScanPage extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.06),
+        color: color.withValues(alpha:0.06),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha:0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

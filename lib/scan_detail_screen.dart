@@ -57,7 +57,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: hasValue
-              ? const Color(0xFFFFD700).withOpacity(0.35)
+              ? const Color(0xFFFFD700).withValues(alpha:0.35)
               : Colors.white12,
         ),
       ),

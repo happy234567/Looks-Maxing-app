@@ -138,8 +138,7 @@ class _AnimatedScoreCircleState extends State<_AnimatedScoreCircle>
 
 class _PressableCard extends StatefulWidget {
   final Widget child;
-  final VoidCallback? onTap;
-  const _PressableCard({required this.child, VoidCallback? onTap}) : onTap = onTap;
+  const _PressableCard({required this.child});
   @override
   State<_PressableCard> createState() => _PressableCardState();
 }
@@ -165,7 +164,6 @@ class _PressableCardState extends State<_PressableCard>
     onTapDown: (_) => _ctrl.forward(),
     onTapUp: (_) async {
       await _ctrl.reverse();
-      widget.onTap?.call();
     },
     onTapCancel: () => _ctrl.reverse(),
     child: AnimatedBuilder(
@@ -646,7 +644,7 @@ class _SetupScreenState extends State<_SetupScreen> {
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [Color(0xFF1A1A00), Color(0xFF1A1A1A)]),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3)),
+              border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.3)),
             ),
             child: const Column(children: [
               Text('🔒', style: TextStyle(fontSize: 32)),
@@ -710,7 +708,7 @@ class _SetupScreenState extends State<_SetupScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF1A1A1A),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.25)),
+              border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.25)),
             ),
             child: Row(children: [
               const Text('📅', style: TextStyle(fontSize: 26)),
@@ -830,9 +828,9 @@ class _SetupScreenState extends State<_SetupScreen> {
   Widget _miniChip(String label) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
-      color: const Color(0xFFFFD700).withOpacity(0.1),
+      color: const Color(0xFFFFD700).withValues(alpha:0.1),
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.25)),
+      border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.25)),
     ),
     child: Text(label, style: const TextStyle(color: Color(0xFFFFD700), fontSize: 10)),
   );
@@ -859,9 +857,9 @@ class _SetupScreenState extends State<_SetupScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFD700).withOpacity(0.12),
+              color: const Color(0xFFFFD700).withValues(alpha:0.12),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.35)),
+              border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.35)),
             ),
             child: Text('Target: $target $unit', style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11)),
           ),
@@ -933,9 +931,9 @@ class _SetupScreenState extends State<_SetupScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFD700).withOpacity(0.12),
+              color: const Color(0xFFFFD700).withValues(alpha:0.12),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.35)),
+              border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.35)),
             ),
             child: Text('Target: ${_mandatory.sleepTarget.toStringAsFixed(1)} hr',
                 style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11)),
@@ -1008,7 +1006,7 @@ class _SetupScreenState extends State<_SetupScreen> {
         width: 58, height: 36,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha:0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white10),
         ),
@@ -1143,10 +1141,10 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
           decoration: BoxDecoration(
             color: const Color(0xFF1A1A1A),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: auraColor.withOpacity(0.5)),
+            border: Border.all(color: auraColor.withValues(alpha:0.5)),
             boxShadow: [
               BoxShadow(
-                color: auraColor.withOpacity(0.4 * _glowAnim.value),
+                color: auraColor.withValues(alpha:0.4 * _glowAnim.value),
                 blurRadius: 20 * _glowAnim.value,
                 spreadRadius: 2 * _glowAnim.value,
               ),
@@ -1232,7 +1230,7 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [Color(0xFF1A1A00), Color(0xFF1A1A1A)]),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3)),
+            border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.3)),
           ),
           child: Row(children: [
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1278,7 +1276,7 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
               decoration: BoxDecoration(
                 color: const Color(0xFF1A1A1A),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.25)),
+                border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.25)),
               ),
               child: const Row(children: [
                 Text('📋', style: TextStyle(fontSize: 18)),
@@ -1347,8 +1345,8 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: isToday
-                          ? const Color(0xFFFFD700).withOpacity(0.5)
-                          : (isLocked ? Colors.white.withOpacity(0.05) : Colors.white12),
+                          ? const Color(0xFFFFD700).withValues(alpha:0.5)
+                          : (isLocked ? Colors.white.withValues(alpha:0.05) : Colors.white12),
                     ),
                   ),
                   child: Row(children: [
@@ -1358,10 +1356,10 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: isLocked
-                            ? Colors.white.withOpacity(0.05)
+                            ? Colors.white.withValues(alpha:0.05)
                             : (isToday
-                                ? const Color(0xFFFFD700).withOpacity(0.18)
-                                : _progressColor(rate).withOpacity(0.13)),
+                                ? const Color(0xFFFFD700).withValues(alpha:0.18)
+                                : _progressColor(rate).withValues(alpha:0.13)),
                         border: Border.all(
                           color: isLocked
                               ? Colors.white12
@@ -1577,9 +1575,9 @@ class _DayScreenState extends State<_DayScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: done ? const Color(0xFF8BC34A).withOpacity(0.07) : const Color(0xFF1A1A1A),
+          color: done ? const Color(0xFF8BC34A).withValues(alpha:0.07) : const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: done ? const Color(0xFF8BC34A).withOpacity(0.45) : Colors.white12),
+          border: Border.all(color: done ? const Color(0xFF8BC34A).withValues(alpha:0.45) : Colors.white12),
         ),
         child: Row(children: [
           Text(icon, style: const TextStyle(fontSize: 22)),
@@ -1641,7 +1639,7 @@ class _DayScreenState extends State<_DayScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF1A1A1A),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _pColor(_rate).withOpacity(0.35)),
+            border: Border.all(color: _pColor(_rate).withValues(alpha:0.35)),
           ),
           child: Column(children: [
             Row(children: [
@@ -1665,9 +1663,9 @@ class _DayScreenState extends State<_DayScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.08),
+                color: Colors.orange.withValues(alpha:0.08),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                border: Border.all(color: Colors.orange.withValues(alpha:0.3)),
               ),
               child: const Row(children: [
                 Icon(Icons.lock_outline, color: Colors.orange, size: 15),
@@ -1722,7 +1720,7 @@ class _DayScreenState extends State<_DayScreen> {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.03),
+                    color: Colors.white.withValues(alpha:0.03),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.white10),
                   ),
@@ -1861,7 +1859,7 @@ class _EditTasksScreenState extends State<_EditTasksScreen> {
         width: 58, height: 36,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha:0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white10),
         ),
@@ -1879,7 +1877,7 @@ class _EditTasksScreenState extends State<_EditTasksScreen> {
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [Color(0xFF1A1A00), Color(0xFF1A1A1A)]),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3)),
+            border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.3)),
           ),
           child: const Column(children: [
             Text('✏️', style: TextStyle(fontSize: 28)),
@@ -1927,9 +1925,9 @@ class _EditTasksScreenState extends State<_EditTasksScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF7B68EE).withOpacity(0.12),
+                  color: const Color(0xFF7B68EE).withValues(alpha:0.12),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF7B68EE).withOpacity(0.35)),
+                  border: Border.all(color: const Color(0xFF7B68EE).withValues(alpha:0.35)),
                 ),
                 child: Text('Target: ${_mandatory.sleepTarget.toStringAsFixed(1)} hr',
                     style: const TextStyle(color: Color(0xFF7B68EE), fontSize: 11)),
@@ -2030,8 +2028,8 @@ class _EditTasksScreenState extends State<_EditTasksScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: color.withOpacity(0.35)),
+              color: color.withValues(alpha:0.12), borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: color.withValues(alpha:0.35)),
             ),
             child: Text('Target: $target $unit', style: TextStyle(color: color, fontSize: 11)),
           ),
@@ -2099,7 +2097,7 @@ class _EditTasksScreenState extends State<_EditTasksScreen> {
           width: double.infinity, padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.25)),
+            border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.25)),
           ),
           child: Row(children: [
             const Text('📅', style: TextStyle(fontSize: 24)),

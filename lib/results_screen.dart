@@ -245,14 +245,14 @@ class _ResultsScreenState extends State<ResultsScreen>
         color: const Color(0xFF111111),
         borderRadius: BorderRadius.circular(24),
         border:
-            Border.all(color: scoreColor.withOpacity(0.25), width: 1.5),
+            Border.all(color: scoreColor.withValues(alpha:0.25), width: 1.5),
       ),
       child: Row(
         children: [
           // Animated circular score
           AnimatedBuilder(
             animation: _scoreAnim,
-            builder: (_, __) {
+            builder: (_, _) {
               final displayScore = _scoreAnim.value.round();
               return Stack(
                 alignment: Alignment.center,
@@ -308,10 +308,10 @@ class _ResultsScreenState extends State<ResultsScreen>
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: scoreColor.withOpacity(0.1),
+                    color: scoreColor.withValues(alpha:0.1),
                     borderRadius: BorderRadius.circular(20),
                     border:
-                        Border.all(color: scoreColor.withOpacity(0.3)),
+                        Border.all(color: scoreColor.withValues(alpha:0.3)),
                   ),
                   child: Text(_getRatingTier(overall),
                       style:
@@ -351,7 +351,7 @@ class _ResultsScreenState extends State<ResultsScreen>
           decoration: BoxDecoration(
             color: const Color(0xFF111111),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            border: Border.all(color: Colors.white.withValues(alpha:0.06)),
           ),
           child: Row(
             children: [
@@ -372,7 +372,7 @@ class _ResultsScreenState extends State<ResultsScreen>
                         Row(children: [
                           Text(_getScoreLabel(score),
                               style: TextStyle(
-                                  color: color.withOpacity(0.7),
+                                  color: color.withValues(alpha:0.7),
                                   fontSize: 11)),
                           const SizedBox(width: 8),
                           Text('$score',
@@ -405,7 +405,7 @@ class _ResultsScreenState extends State<ResultsScreen>
         color: const Color(0xFF111111),
         borderRadius: BorderRadius.circular(16),
         border:
-            Border.all(color: Colors.white.withOpacity(0.06)),
+            Border.all(color: Colors.white.withValues(alpha:0.06)),
       ),
       child: Row(
         children: [
@@ -466,7 +466,7 @@ class _ResultsScreenState extends State<ResultsScreen>
                             gradient: LinearGradient(
                               colors: [
                                 Colors.transparent,
-                                Colors.black.withOpacity(0.55)
+                                Colors.black.withValues(alpha:0.55)
                               ],
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
@@ -581,11 +581,11 @@ class _AnimatedScoreBarState extends State<_AnimatedScoreBar>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) => ClipRRect(
+      builder: (_, _) => ClipRRect(
         borderRadius: BorderRadius.circular(4),
         child: LinearProgressIndicator(
           value: _anim.value,
-          backgroundColor: Colors.white.withOpacity(0.07),
+          backgroundColor: Colors.white.withValues(alpha:0.07),
           valueColor: AlwaysStoppedAnimation(widget.color),
           minHeight: 6,
         ),
