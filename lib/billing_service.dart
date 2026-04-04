@@ -21,15 +21,15 @@ String getLocalizedCoursePrice(String? currencyCode) {
     case 'INR':
       return '₹4,500';
     case 'USD':
-      return '\$50';
+      return '\$100';
     case 'GBP':
-      return '£40';
+      return '£80';
     case 'EUR':
-      return '€45';
+      return '€90';
     case 'AUD':
-      return 'A\$70';
+      return 'A\$130';
     case 'CAD':
-      return 'C\$65';
+      return 'C\$120';
     default:
       // Fallback: just say "typical courses" without a price
       return 'typical courses';

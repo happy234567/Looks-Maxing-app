@@ -130,7 +130,7 @@ class _CameraScreenState extends State<CameraScreen> {
       }
 
       var response = await request.send().timeout(
-        const Duration(seconds: 35),
+        const Duration(seconds: 60),
         onTimeout: () {
           throw Exception('Server took too long to respond. Please try again.');
           },
