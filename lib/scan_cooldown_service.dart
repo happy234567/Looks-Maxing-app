@@ -153,7 +153,7 @@ class ScanCooldownService {
           : 'Your 30-day cooldown is over — scan your face now!',
       tzScheduled,
       NotificationDetails(android: androidDetails),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );

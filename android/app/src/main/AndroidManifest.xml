@@ -14,10 +14,6 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
-    <!-- NEW: Required for scheduled local notifications to fire exactly on time -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
-
     <uses-permission android:name="com.android.vending.BILLING" />
 
     <application
