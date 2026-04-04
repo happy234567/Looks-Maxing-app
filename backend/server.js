@@ -5,11 +5,17 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const fs = require('fs');
 require('dotenv').config();
 
-const app = express();
+const app = express();   // ← app must be created FIRST
 
-// -----------------------------
-// Gemini Initialization
-// -----------------------------
+// ─── Simple API key guard ───────────────────────────
+app.use('/analyze', (req, res, next) => {
+  if (req.headers['x-app-key'] !== process.env.APP_SECRET) {
+    return res.status(403).json({ success: false, error: 'Forbidden' });
+  }
+  next();
+});
+
+// ─── Gemini Initialization ───────────────────────────
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // -----------------------------

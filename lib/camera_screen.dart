@@ -8,6 +8,7 @@ import 'scan_cooldown_service.dart';
 import 'package:http_parser/http_parser.dart';
 import 'results_screen.dart';
 import 'scan_history.dart';
+import 'dart:async';
 
 
 class CameraScreen extends StatefulWidget {
@@ -110,6 +111,7 @@ class _CameraScreenState extends State<CameraScreen> {
       const String backendUrl ='https://level-maxing-backend.onrender.com/analyze';
 
       var request = http.MultipartRequest('POST', Uri.parse(backendUrl));
+      request.headers['x-app-key'] = 'levelmax-secret-20242006'; // same value as APP_SECRET
 
       request.files.add(await http.MultipartFile.fromPath(
           'front', _frontImage!.path,
@@ -127,7 +129,12 @@ class _CameraScreenState extends State<CameraScreen> {
             contentType: MediaType('image', 'jpeg')));
       }
 
-      var response = await request.send();
+      var response = await request.send().timeout(
+        const Duration(seconds: 35),
+        onTimeout: () {
+          throw Exception('Server took too long to respond. Please try again.');
+          },
+        );
       var responseBody = await response.stream.bytesToString();
       var data = jsonDecode(responseBody);
 

@@ -1,11 +1,9 @@
-// ignore_for_file: use_build_context_synchronously
-
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart'; // Added url_launcher
+import 'package:url_launcher/url_launcher.dart';
 import 'onboarding_screen.dart';
 import 'main.dart';
 import 'notification_service.dart';
@@ -25,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
         return;
       }
 
@@ -37,21 +35,24 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       await FirebaseAuth.instance.signInWithCredential(credential);
+      if (!mounted) return;
 
       // Save notification token for this user (with timeout)
       try {
         await NotificationService.saveTokenAfterLogin().timeout(
           const Duration(seconds: 3),
-          onTimeout: () => debugPrint("Notification token save timed out - offline?"),
+          onTimeout: () =>
+              debugPrint("Notification token save timed out - offline?"),
         );
       } catch (e) {
         debugPrint("Notification save failed (offline?): $e");
       }
+      if (!mounted) return;
 
       // Check Firestore to see if user has completed onboarding
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
         return;
       }
 
@@ -64,7 +65,8 @@ class _LoginScreenState extends State<LoginScreen> {
             .timeout(
               const Duration(seconds: 5),
               onTimeout: () {
-                debugPrint("Firestore timeout during login - checking local cache");
+                debugPrint(
+                    "Firestore timeout during login - checking local cache");
                 throw Exception('Firestore timeout');
               },
             );
@@ -72,50 +74,53 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
 
         // Check if document exists AND has username field (means onboarding completed)
-        if (doc.exists && doc.data()?['username'] != null && doc.data()?['username'] != '') {
-          // User has completed onboarding, load their data
+        if (doc.exists &&
+            doc.data()?['username'] != null &&
+            doc.data()?['username'] != '') {
           final data = doc.data()!;
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('username', data['username'] ?? '');
           await prefs.setString('firstName', data['firstName'] ?? '');
           await prefs.setString('gender', data['gender'] ?? '');
 
+          if (!mounted) return;
           Navigator.pushReplacement(context,
               MaterialPageRoute(builder: (_) => const MainNavigation()));
         } else {
-          // User hasn't completed onboarding yet (new user or incomplete profile)
+          if (!mounted) return;
           Navigator.pushReplacement(context,
               MaterialPageRoute(builder: (_) => const OnboardingScreen()));
         }
       } catch (e) {
-        // Offline or timeout - check SharedPreferences for cached data
         debugPrint("Firestore check failed: $e");
-        
+
         if (!mounted) return;
-        
+
         final prefs = await SharedPreferences.getInstance();
-        final hasUsername = prefs.getString('username') != null && prefs.getString('username') != '';
-        
+        final hasUsername = prefs.getString('username') != null &&
+            prefs.getString('username') != '';
+
+        if (!mounted) return;
+
         if (hasUsername) {
-          // User has logged in before - use cached data
           Navigator.pushReplacement(context,
               MaterialPageRoute(builder: (_) => const MainNavigation()));
         } else {
-          // First time login while offline - show error
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('No internet connection. Please connect and try again.'),
+              content: Text(
+                  'No internet connection. Please connect and try again.'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 4),
             ),
           );
           setState(() => _isLoading = false);
-          // Sign them out since we can't complete first-time setup offline
           await FirebaseAuth.instance.signOut();
           await GoogleSignIn().signOut();
         }
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
@@ -123,9 +128,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // Added function to launch the legal page
   Future<void> _launchLegal() async {
-    final Uri url = Uri.parse('https://happy234567.github.io/levelmaxing-legal/');
+    final Uri url =
+        Uri.parse('https://happy234567.github.io/levelmaxing-legal/');
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -159,7 +164,9 @@ class _LoginScreenState extends State<LoginScreen> {
               const Icon(Icons.face, color: Color(0xFFFFD700), size: 100),
               const SizedBox(height: 30),
               const Text('AI-Powered Face Analysis',
-                  style: TextStyle(color: Colors.white, fontSize: 20,
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
               const Text('Get brutally honest ratings\nand improve your looks',
@@ -167,16 +174,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: TextStyle(color: Colors.white54, fontSize: 15)),
               const Spacer(),
               _isLoading
-                  ? const CircularProgressIndicator(
-                      color: Color(0xFFFFD700))
+                  ? const CircularProgressIndicator(color: Color(0xFFFFD700))
                   : SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: _signInWithGoogle,
                         icon: const Icon(Icons.login),
                         label: const Text('Continue with Google',
-                            style: TextStyle(fontSize: 16,
-                                fontWeight: FontWeight.bold)),
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFFFD700),
                           foregroundColor: Colors.black,
@@ -187,14 +193,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
               const SizedBox(height: 20),
-              // Updated bottom text to be clickable
               GestureDetector(
                 onTap: _launchLegal,
                 child: const Text(
                   'By continuing you agree to our Terms of Service & Privacy Policy',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white54, 
+                    color: Colors.white54,
                     fontSize: 12,
                     decoration: TextDecoration.underline,
                     decorationColor: Colors.white54,
