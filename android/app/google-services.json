@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "196680974175-85cp3365c31bq5kf0f2p15j3dn2iq219.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.levelmaxing.app",
+            "certificate_hash": "cdbf4ddac0e5f1250551cf764a1fe6256ab002c7"
+          }
+        },
+        {
           "client_id": "196680974175-8pb7ljt8qk1j6v32op457uiftlqs7a5a.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

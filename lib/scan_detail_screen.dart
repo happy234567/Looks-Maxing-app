@@ -1,526 +1,321 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'scan_history.dart';
+
 class ScanDetailScreen extends StatefulWidget {
   final ScanHistory scan;
   const ScanDetailScreen({super.key, required this.scan});
-
   @override
   State<ScanDetailScreen> createState() => _ScanDetailScreenState();
 }
 
-class _ScanDetailScreenState extends State<ScanDetailScreen> {
+class _ScanDetailScreenState extends State<ScanDetailScreen> with SingleTickerProviderStateMixin {
   String _gender = '';
-  int _currentPhoto = 0;
-  final PageController _photoController = PageController();
+  int _curPhoto = 0;
+  final PageController _photoCtrl = PageController();
+  late AnimationController _animCtrl;
+  late Animation<double> _scoreAnim;
 
   @override
   void initState() {
     super.initState();
     _loadGender();
-  }
-
-  Future<void> _loadGender() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() => _gender = prefs.getString('gender') ?? 'Male');
-  }
-
-  Color _getScoreColor(int score) {
-    if (score >= 90) return const Color(0xFF39FF14);
-    if (score >= 80) return const Color(0xFF00C853);
-    if (score >= 70) return const Color(0xFF8BC34A);
-    if (score >= 60) return const Color(0xFFFFEA00);
-    if (score >= 50) return const Color(0xFFFFD700);
-    return const Color(0xFF9E9E9E);
-  }
-
-  String _getScoreLabel(int score) {
-    if (score >= 90) return 'Elite';
-    if (score >= 80) return 'High Attractive';
-    if (score >= 70) return 'Strong';
-    if (score >= 60) return 'Attractive';
-    if (score >= 50) return 'Developing';
-    return 'Below Average';
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-  }
-
-  Widget _buildAnalysisTag(String label, String value) {
-    final hasValue = value.isNotEmpty && value != 'Not analysed';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: hasValue
-              ? const Color(0xFFFFD700).withValues(alpha:0.35)
-              : Colors.white12,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white38, fontSize: 11),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            hasValue ? value : 'Not analysed',
-            style: TextStyle(
-              color: hasValue ? const Color(0xFFFFD700) : Colors.white30,
-              fontSize: 14,
-              fontWeight: hasValue ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFaceAnalysisSection(Map<String, dynamic> scores) {
-    final faceShape = (scores['faceShape'] as String?)?.isNotEmpty == true
-        ? scores['faceShape'] as String : 'Not analysed';
-    final canthalTilt = (scores['canthalTilt'] as String?)?.isNotEmpty == true
-        ? scores['canthalTilt'] as String : 'Not analysed';
-    final eyeShape = (scores['eyeShape'] as String?)?.isNotEmpty == true
-        ? scores['eyeShape'] as String : 'Not analysed';
-    final eyeType = (scores['eyeType'] as String?)?.isNotEmpty == true
-        ? scores['eyeType'] as String : 'Not analysed';
-
-    final fields = [
-      ('Face Shape', faceShape),
-      ('Canthal Tilt', canthalTilt),
-      ('Eye Shape', eyeShape),
-      ('Eye Type', eyeType),
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Text('🔍', style: TextStyle(fontSize: 18)),
-              SizedBox(width: 8),
-              Text(
-                'Face Analysis',
-                style: TextStyle(
-                  color: Color(0xFFFFD700),
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: 2.4,
-            children: fields
-                .map((f) => _buildAnalysisTag(f.$1, f.$2))
-                .toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildScoreRow(String label, int score) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(label,
-                  style: const TextStyle(color: Colors.white70, fontSize: 14)),
-              Row(
-                children: [
-                  Text(_getScoreLabel(score),
-                      style: TextStyle(
-                          color: _getScoreColor(score), fontSize: 12)),
-                  const SizedBox(width: 8),
-                  Text('$score',
-                      style: TextStyle(
-                          color: _getScoreColor(score),
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: score / 100,
-              backgroundColor: Colors.white12,
-              valueColor: AlwaysStoppedAnimation(_getScoreColor(score)),
-              minHeight: 8,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _openFullscreen(List<String> photos, int initialIndex) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _FullscreenPhotoViewer(
-          photos: photos,
-          initialIndex: initialIndex,
-          labels: const ['Front', 'Right', 'Left'],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPhotoSection() {
-    final photos = widget.scan.imagePaths
-        .where((p) => File(p).existsSync())
-        .toList();
-    const photoLabels = ['Front', 'Right', 'Left'];
-
-    if (photos.isEmpty) {
-      return Container(
-        height: 260,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: const Center(
-          child: Icon(Icons.face, color: Colors.white38, size: 80),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: 260,
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: _photoController,
-            itemCount: photos.length,
-            onPageChanged: (i) => setState(() => _currentPhoto = i),
-            itemBuilder: (context, i) {
-              return GestureDetector(
-                onTap: () => _openFullscreen(photos, i),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.file(File(photos[i]), fit: BoxFit.cover),
-                      // Label badge
-                      Positioned(
-                        top: 12,
-                        left: 12,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            i < photoLabels.length ? photoLabels[i] : '',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                      ),
-                      // Fullscreen icon hint
-                      Positioned(
-                        bottom: 18,
-                        right: 12,
-                        child: Container(
-                          padding: const EdgeInsets.all(7),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Icon(Icons.fullscreen,
-                              color: Colors.white, size: 20),
-                        ),
-                      ),
-                      // Swipe hint on first photo
-                      if (photos.length > 1 && i == 0)
-                        Positioned(
-                          bottom: 18,
-                          left: 12,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.swipe,
-                                    color: Colors.white54, size: 14),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${photos.length} photos',
-                                  style: const TextStyle(
-                                      color: Colors.white54, fontSize: 11),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          // Dot indicators
-          if (photos.length > 1)
-            Positioned(
-              bottom: 4,
-              left: 0,
-              right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  photos.length,
-                  (i) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: _currentPhoto == i ? 20 : 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: _currentPhoto == i
-                          ? const Color(0xFFFFD700)
-                          : Colors.white24,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
+    final overall = widget.scan.scores['overall'] as int? ?? 0;
+    _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+    _scoreAnim = Tween<double>(begin: 0, end: overall.toDouble())
+        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
+    Future.delayed(const Duration(milliseconds: 300), () { if (mounted) _animCtrl.forward(); });
   }
 
   @override
+  void dispose() { _animCtrl.dispose(); super.dispose(); }
+
+  Future<void> _loadGender() async {
+    final p = await SharedPreferences.getInstance();
+    setState(() => _gender = p.getString('gender') ?? 'Male');
+  }
+
+  Color _scoreColor(int s) {
+    if (s >= 90) return const Color(0xFF39FF14);
+    if (s >= 80) return const Color(0xFF00C853);
+    if (s >= 70) return const Color(0xFF8BC34A);
+    if (s >= 60) return const Color(0xFFFFEA00);
+    if (s >= 50) return const Color(0xFFFFD700);
+    return const Color(0xFF9E9E9E);
+  }
+
+  String _scoreLabel(int s) {
+    if (s >= 90) return 'Elite';
+    if (s >= 80) return 'Highly Attractive';
+    if (s >= 70) return 'Attractive';
+    if (s >= 60) return 'Above Average';
+    if (s >= 50) return 'Average';
+    return 'Below Average';
+  }
+
+  String _fmt(DateTime d) => '${d.day}/${d.month}/${d.year} at ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
+
+  void _openFs(List<String> p, int i) => Navigator.push(context,
+    MaterialPageRoute(builder: (_) => _FsViewer(photos: p, initialIndex: i, labels: const ['Front','Right','Left'])));
+
+  @override
   Widget build(BuildContext context) {
-    final scores = widget.scan.scores;
-    final overall = scores['overall'] as int? ?? 0;
-    final genderLabel = _gender == 'Female' ? 'Femininity' : 'Masculinity';
+    final sc = widget.scan.scores;
+    final overall = sc['overall'] as int? ?? 0;
+    final gl = _gender == 'Female' ? 'Femininity' : 'Masculinity';
+    final sColor = _scoreColor(overall);
+
+    final items = [
+      ('Skin Quality', sc['skin'] as int? ?? 0, Icons.auto_awesome),
+      ('Cheekbones', sc['cheekbones'] as int? ?? 0, Icons.face_retouching_natural),
+      ('Jawline', sc['jawline'] as int? ?? 0, Icons.diamond_outlined),
+      ('Neck', sc['neck'] as int? ?? 0, Icons.straighten),
+      (gl, sc['masculinityFemininity'] as int? ?? 0, Icons.bolt),
+      ('Eyes', sc['eyes'] as int? ?? 0, Icons.visibility_outlined),
+      ('Facial Symmetry', sc['symmetry'] as int? ?? 0, Icons.balance),
+      ('Max Potential', sc['maxPotential'] as int? ?? 0, Icons.rocket_launch),
+    ];
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         backgroundColor: const Color(0xFF111111),
-        title: const Text('Scan Details',
-            style: TextStyle(color: Color(0xFFFFD700))),
+        title: const Text('Scan Details', style: TextStyle(color: Color(0xFFFFD700))),
         centerTitle: true,
         iconTheme: const IconThemeData(color: Color(0xFFFFD700)),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            // Photo section with carousel
-            _buildPhotoSection(),
-            const SizedBox(height: 20),
+        padding: const EdgeInsets.all(16),
+        child: Column(children: [
+          _photoSection(),
+          const SizedBox(height: 16),
+          Text(_fmt(widget.scan.date), style: const TextStyle(color: Colors.white38, fontSize: 13)),
+          const SizedBox(height: 20),
 
-            // Date
-            Text(_formatDate(widget.scan.date),
-                style: const TextStyle(color: Colors.white54, fontSize: 14)),
-            const SizedBox(height: 20),
-
-            // Overall score circle
-            Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border:
-                    Border.all(color: _getScoreColor(overall), width: 4),
-                color: const Color(0xFF1A1A1A),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('$overall',
-                      style: TextStyle(
-                          color: _getScoreColor(overall),
-                          fontSize: 46,
-                          fontWeight: FontWeight.bold)),
-                  Text(_getScoreLabel(overall),
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 12)),
-                ],
-              ),
+          // Overall score hero
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [const Color(0xFF1A1A1A), sColor.withValues(alpha:0.08)],
+                begin: Alignment.topLeft, end: Alignment.bottomRight),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: sColor.withValues(alpha:0.3), width: 1.5),
+              boxShadow: [BoxShadow(color: sColor.withValues(alpha:0.1), blurRadius: 20)],
             ),
-            const SizedBox(height: 6),
-            const Text('Overall Score',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 24),
+            child: Column(children: [
+              AnimatedBuilder(animation: _scoreAnim, builder: (_, _) {
+                final d = _scoreAnim.value.round();
+                return SizedBox(
+                  width: 120, height: 120,
+                  child: CustomPaint(
+                    painter: _RingPainter(progress: _scoreAnim.value / 100, color: sColor),
+                    child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('$d', style: TextStyle(color: sColor, fontSize: 42, fontWeight: FontWeight.bold, height: 1.0)),
+                      Text(_scoreLabel(d), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                    ])),
+                  ),
+                );
+              }),
+              const SizedBox(height: 8),
+              const Text('Overall Score', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            ]),
+          ),
+          const SizedBox(height: 24),
 
-            // Score breakdown
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Score Breakdown',
-                      style: TextStyle(
-                          color: Color(0xFFFFD700),
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  _buildScoreRow('Skin Quality', scores['skin'] as int? ?? 0),
-                  _buildScoreRow(
-                      'Cheekbones', scores['cheekbones'] as int? ?? 0),
-                  _buildScoreRow('Jawline', scores['jawline'] as int? ?? 0),
-                  _buildScoreRow('Neck', scores['neck'] as int? ?? 0),
-                  _buildScoreRow(genderLabel,
-                      scores['masculinityFemininity'] as int? ?? 0),
-                  _buildScoreRow('Eyes', scores['eyes'] as int? ?? 0),
-                  _buildScoreRow(
-                      'Facial Symmetry', scores['symmetry'] as int? ?? 0),
-                  _buildScoreRow(
-                      'Maximum Potential', scores['maxPotential'] as int? ?? 0),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
+          // Score breakdown grid
+          _sectionHead('Score Breakdown'),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2, crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.5),
+            itemCount: items.length,
+            itemBuilder: (_, i) {
+              final (label, score, icon) = items[i];
+              return _scoreCard(label, score, icon);
+            },
+          ),
+          const SizedBox(height: 24),
 
-            // Face Analysis section
-            _buildFaceAnalysisSection(scores),
-            const SizedBox(height: 30),
-          ],
-        ),
+          // Face analysis
+          _sectionHead('Face Analysis'),
+          const SizedBox(height: 12),
+          _faceAnalysis(sc),
+          const SizedBox(height: 30),
+        ]),
       ),
     );
   }
+
+  Widget _sectionHead(String t) => Row(children: [
+    Container(width: 3, height: 16, decoration: BoxDecoration(color: const Color(0xFFFFD700), borderRadius: BorderRadius.circular(2))),
+    const SizedBox(width: 8),
+    Text(t, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+  ]);
+
+  Widget _scoreCard(String label, int score, IconData icon) {
+    final c = _scoreColor(score);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111), borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.withValues(alpha:0.15)),
+        boxShadow: [BoxShadow(color: c.withValues(alpha:0.05), blurRadius: 12)],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Container(padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: c.withValues(alpha:0.1), borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, color: c, size: 16)),
+          Text('$score', style: TextStyle(color: c, fontSize: 24, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 6),
+        ClipRRect(borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(value: score / 100, backgroundColor: Colors.white12,
+            valueColor: AlwaysStoppedAnimation(c), minHeight: 5)),
+      ]),
+    );
+  }
+
+  Widget _faceAnalysis(Map<String, dynamic> sc) {
+    final fields = [
+      (Icons.face, 'Face Shape', sc['faceShape'] as String? ?? 'Unknown'),
+      (Icons.open_in_full, 'Canthal Tilt', sc['canthalTilt'] as String? ?? 'Unknown'),
+      (Icons.visibility, 'Eye Shape', sc['eyeShape'] as String? ?? 'Unknown'),
+      (Icons.center_focus_strong, 'Eye Type', sc['eyeType'] as String? ?? 'Unknown'),
+    ];
+    return GridView.count(
+      crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.7,
+      children: fields.map((f) => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111111), borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFFFD700).withValues(alpha:0.1))),
+        child: Row(children: [
+          Container(padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: const Color(0xFFFFD700).withValues(alpha:0.1), borderRadius: BorderRadius.circular(12)),
+            child: Icon(f.$1, color: const Color(0xFFFFD700), size: 18)),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text(f.$2, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+            const SizedBox(height: 2),
+            Text(f.$3, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+          ])),
+        ]),
+      )).toList(),
+    );
+  }
+
+  Widget _photoSection() {
+    final photos = widget.scan.imagePaths.where((p) => File(p).existsSync()).toList();
+    const labels = ['Front', 'Right', 'Left'];
+    if (photos.isEmpty) {
+      return Container(
+        height: 260, decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(20)),
+        child: const Center(child: Icon(Icons.face, color: Colors.white38, size: 80)));
+    }
+
+    return SizedBox(height: 260, child: Stack(children: [
+      PageView.builder(controller: _photoCtrl, itemCount: photos.length,
+        onPageChanged: (i) => setState(() => _curPhoto = i),
+        itemBuilder: (_, i) => GestureDetector(
+          onTap: () => _openFs(photos, i),
+          child: ClipRRect(borderRadius: BorderRadius.circular(20),
+            child: Stack(fit: StackFit.expand, children: [
+              Image.file(File(photos[i]), fit: BoxFit.cover),
+              Positioned(top: 12, left: 12, child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+                child: Text(i < labels.length ? labels[i] : '', style: const TextStyle(color: Colors.white, fontSize: 13)))),
+              Positioned(bottom: 18, right: 12, child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+                child: const Icon(Icons.fullscreen, color: Colors.white, size: 20))),
+            ])))),
+      if (photos.length > 1) Positioned(bottom: 4, left: 0, right: 0,
+        child: Row(mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(photos.length, (i) => AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: _curPhoto == i ? 20 : 7, height: 7,
+            decoration: BoxDecoration(
+              color: _curPhoto == i ? const Color(0xFFFFD700) : Colors.white24,
+              borderRadius: BorderRadius.circular(4)))))),
+    ]));
+  }
 }
 
-// ─── Full-screen photo viewer ─────────────────────────────────────────────────
+class _RingPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  _RingPainter({required this.progress, required this.color});
 
-class _FullscreenPhotoViewer extends StatefulWidget {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2 - 4;
+    canvas.drawCircle(center, r, Paint()..color = Colors.white.withValues(alpha:0.08)..style = PaintingStyle.stroke..strokeWidth = 6);
+    final paint = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 6..strokeCap = StrokeCap.round;
+    canvas.drawArc(Rect.fromCircle(center: center, radius: r), -math.pi / 2, 2 * math.pi * progress, false, paint);
+    final glow = Paint()..color = color.withValues(alpha:0.3)..style = PaintingStyle.stroke..strokeWidth = 10..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    canvas.drawArc(Rect.fromCircle(center: center, radius: r), -math.pi / 2, 2 * math.pi * progress, false, glow);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) => old.progress != progress;
+}
+
+class _FsViewer extends StatefulWidget {
   final List<String> photos;
   final int initialIndex;
   final List<String> labels;
-  const _FullscreenPhotoViewer({
-    required this.photos,
-    required this.initialIndex,
-    required this.labels,
-  });
-
+  const _FsViewer({required this.photos, required this.initialIndex, required this.labels});
   @override
-  State<_FullscreenPhotoViewer> createState() =>
-      _FullscreenPhotoViewerState();
+  State<_FsViewer> createState() => _FsViewerState();
 }
 
-class _FullscreenPhotoViewerState extends State<_FullscreenPhotoViewer> {
-  late PageController _ctrl;
-  late int _current;
+class _FsViewerState extends State<_FsViewer> {
+  late PageController _c;
+  late int _cur;
 
   @override
   void initState() {
     super.initState();
-    _current = widget.initialIndex;
-    _ctrl = PageController(initialPage: widget.initialIndex);
+    _cur = widget.initialIndex;
+    _c = PageController(initialPage: widget.initialIndex);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          _current < widget.labels.length ? widget.labels[_current] : '',
-          style: const TextStyle(color: Colors.white),
-        ),
+      appBar: AppBar(backgroundColor: Colors.black, iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(_cur < widget.labels.length ? widget.labels[_cur] : '', style: const TextStyle(color: Colors.white)),
         centerTitle: true,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Text(
-              '${_current + 1} / ${widget.photos.length}',
-              style: const TextStyle(color: Colors.white54, fontSize: 14),
-            ),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          PageView.builder(
-            controller: _ctrl,
-            itemCount: widget.photos.length,
-            onPageChanged: (i) => setState(() => _current = i),
-            itemBuilder: (context, i) => InteractiveViewer(
-              minScale: 0.8,
-              maxScale: 4.0,
-              child: Center(
-                child: Image.file(
-                  File(widget.photos[i]),
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-          ),
-          if (widget.photos.length > 1)
-            Positioned(
-              bottom: 24,
-              left: 0,
-              right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  widget.photos.length,
-                  (i) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    width: _current == i ? 20 : 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: _current == i
-                          ? const Color(0xFFFFD700)
-                          : Colors.white38,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+        actions: [Padding(padding: const EdgeInsets.only(right: 16),
+          child: Text('${_cur + 1} / ${widget.photos.length}', style: const TextStyle(color: Colors.white54, fontSize: 14)))]),
+      body: Stack(children: [
+        PageView.builder(controller: _c, itemCount: widget.photos.length,
+          onPageChanged: (i) => setState(() => _cur = i),
+          itemBuilder: (_, i) => InteractiveViewer(minScale: 0.8, maxScale: 4.0,
+            child: Center(child: Image.file(File(widget.photos[i]), fit: BoxFit.contain)))),
+        if (widget.photos.length > 1) Positioned(bottom: 20, left: 0, right: 0,
+          child: Row(mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(widget.photos.length, (i) => AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: _cur == i ? 20 : 7, height: 7,
+              decoration: BoxDecoration(
+                color: _cur == i ? const Color(0xFFFFD700) : Colors.white38,
+                borderRadius: BorderRadius.circular(4)))))),
+      ]),
     );
   }
 }

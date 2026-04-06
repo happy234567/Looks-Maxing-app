@@ -82,10 +82,21 @@ class _LoginScreenState extends State<LoginScreen> {
           await prefs.setString('username', data['username'] ?? '');
           await prefs.setString('firstName', data['firstName'] ?? '');
           await prefs.setString('gender', data['gender'] ?? '');
+          if (data['age'] != null) await prefs.setInt('age', data['age'] as int);
+          if (data['weight'] != null) await prefs.setDouble('weight', (data['weight'] as num).toDouble());
+          if (data['weightUnit'] != null) await prefs.setString('weightUnit', data['weightUnit'] as String);
+          if (data['height'] != null) await prefs.setDouble('height', (data['height'] as num).toDouble());
+          if (data['heightUnit'] != null) await prefs.setString('heightUnit', data['heightUnit'] as String);
 
           if (!mounted) return;
-          Navigator.pushReplacement(context,
-              MaterialPageRoute(builder: (_) => const MainNavigation()));
+          // If user hasn't completed new onboarding (no age), send to onboarding
+          if (data['age'] == null) {
+            Navigator.pushReplacement(context,
+                MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+          } else {
+            Navigator.pushReplacement(context,
+                MaterialPageRoute(builder: (_) => const MainNavigation()));
+          }
         } else {
           if (!mounted) return;
           Navigator.pushReplacement(context,
@@ -130,7 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _launchLegal() async {
     final Uri url =
-        Uri.parse('https://happy234567.github.io/levelmaxing-legal/');
+        Uri.parse('https://happy234567.github.io/levelmax-legal/');
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

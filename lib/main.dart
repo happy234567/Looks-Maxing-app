@@ -121,8 +121,18 @@ void main() async {
         await prefs.setString('username', data['username'] ?? '');
         await prefs.setString('firstName', data['firstName'] ?? '');
         await prefs.setString('gender', data['gender'] ?? '');
-        
-        initialScreen = const MainNavigation();
+        if (data['age'] != null) await prefs.setInt('age', data['age'] as int);
+        if (data['weight'] != null) await prefs.setDouble('weight', (data['weight'] as num).toDouble());
+        if (data['weightUnit'] != null) await prefs.setString('weightUnit', data['weightUnit'] as String);
+        if (data['height'] != null) await prefs.setDouble('height', (data['height'] as num).toDouble());
+        if (data['heightUnit'] != null) await prefs.setString('heightUnit', data['heightUnit'] as String);
+
+        // If user hasn't completed new onboarding (no age), send to onboarding
+        if (data['age'] == null) {
+          initialScreen = const OnboardingScreen();
+        } else {
+          initialScreen = const MainNavigation();
+        }
       } else {
         initialScreen = const OnboardingScreen();
       }
