@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'scan_history.dart';
 import 'scan_detail_screen.dart';
 
@@ -702,10 +703,24 @@ class _ProgressPageState extends State<ProgressPage>
             // Photo thumbnail
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: scan.imagePath != null &&
-                      File(scan.imagePath!).existsSync()
-                  ? Image.file(File(scan.imagePath!),
-                      width: 56, height: 56, fit: BoxFit.cover)
+              child: scan.imagePath != null
+                  ? (scan.imagePath!.startsWith('http')
+                      ? CachedNetworkImage(
+                          imageUrl: scan.imagePath!,
+                          width: 56, height: 56, fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                              width: 56, height: 56, color: const Color(0xFF1E1E1E),
+                              child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFFFFD700), strokeWidth: 2)))),
+                          errorWidget: (context, url, error) => Container(
+                              width: 56, height: 56, color: const Color(0xFF1E1E1E),
+                              child: const Icon(Icons.error, color: Colors.white24, size: 26)),
+                        )
+                      : (File(scan.imagePath!).existsSync()
+                          ? Image.file(File(scan.imagePath!), width: 56, height: 56, fit: BoxFit.cover)
+                          : Container(
+                              width: 56, height: 56,
+                              decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(12)),
+                              child: const Icon(Icons.face, color: Colors.white24, size: 26))))
                   : Container(
                       width: 56,
                       height: 56,

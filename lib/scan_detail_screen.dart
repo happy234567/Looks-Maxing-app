@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'scan_history.dart';
 
 class ScanDetailScreen extends StatefulWidget {
@@ -66,6 +67,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> with SingleTickerPr
     final overall = sc['overall'] as int? ?? 0;
     final gl = _gender == 'Female' ? 'Femininity' : 'Masculinity';
     final sColor = _scoreColor(overall);
+    final photos = widget.scan.imagePaths.where((p) => p.startsWith('http') || File(p).existsSync()).toList();
 
     final items = [
       ('Skin Quality', sc['skin'] as int? ?? 0, Icons.auto_awesome),
@@ -89,40 +91,15 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> with SingleTickerPr
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
-          _photoSection(),
-          const SizedBox(height: 16),
-          Text(_fmt(widget.scan.date), style: const TextStyle(color: Colors.white38, fontSize: 13)),
-          const SizedBox(height: 20),
-
-          // Overall score hero
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [const Color(0xFF1A1A1A), sColor.withValues(alpha:0.08)],
-                begin: Alignment.topLeft, end: Alignment.bottomRight),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: sColor.withValues(alpha:0.3), width: 1.5),
-              boxShadow: [BoxShadow(color: sColor.withValues(alpha:0.1), blurRadius: 20)],
-            ),
-            child: Column(children: [
-              AnimatedBuilder(animation: _scoreAnim, builder: (_, _) {
-                final d = _scoreAnim.value.round();
-                return SizedBox(
-                  width: 120, height: 120,
-                  child: CustomPaint(
-                    painter: _RingPainter(progress: _scoreAnim.value / 100, color: sColor),
-                    child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text('$d', style: TextStyle(color: sColor, fontSize: 42, fontWeight: FontWeight.bold, height: 1.0)),
-                      Text(_scoreLabel(d), style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                    ])),
-                  ),
-                );
-              }),
-              const SizedBox(height: 8),
-              const Text('Overall Score', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-            ]),
+          Row(
+            children: [
+              Expanded(child: AspectRatio(aspectRatio: 1, child: _squarePhotoSection(photos))),
+              const SizedBox(width: 12),
+              Expanded(child: AspectRatio(aspectRatio: 1, child: _squareOverallHero(overall, sColor))),
+            ],
           ),
+          const SizedBox(height: 12),
+          Text('Scanned on ' + _fmt(widget.scan.date), style: const TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 0.5)),
           const SizedBox(height: 24),
 
           // Score breakdown grid
@@ -213,42 +190,95 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> with SingleTickerPr
     );
   }
 
-  Widget _photoSection() {
-    final photos = widget.scan.imagePaths.where((p) => File(p).existsSync()).toList();
+  Widget _squareOverallHero(int overall, Color sc) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [const Color(0xFF1A1A1A), sc.withValues(alpha:0.1)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: sc.withValues(alpha:0.3), width: 1.5),
+        boxShadow: [BoxShadow(color: sc.withValues(alpha:0.1), blurRadius: 20)],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          AnimatedBuilder(animation: _scoreAnim, builder: (_, _) {
+            final d = _scoreAnim.value.round();
+            return SizedBox(
+              width: 80, height: 80,
+              child: CustomPaint(
+                painter: _RingPainter(progress: _scoreAnim.value / 100, color: sc),
+                child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('$d', style: TextStyle(color: sc, fontSize: 32, fontWeight: FontWeight.bold, height: 1.0)),
+                ])),
+              ),
+            );
+          }),
+          const SizedBox(height: 12),
+          const Text('OVERALL', style: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(_scoreLabel(overall), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: sc, fontSize: 13, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _squarePhotoSection(List<String> photos) {
     const labels = ['Front', 'Right', 'Left'];
     if (photos.isEmpty) {
       return Container(
-        height: 260, decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(20)),
-        child: const Center(child: Icon(Icons.face, color: Colors.white38, size: 80)));
+        decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white12, width: 1.5)),
+        child: const Center(child: Icon(Icons.face, color: Colors.white38, size: 40)));
     }
 
-    return SizedBox(height: 260, child: Stack(children: [
-      PageView.builder(controller: _photoCtrl, itemCount: photos.length,
-        onPageChanged: (i) => setState(() => _curPhoto = i),
-        itemBuilder: (_, i) => GestureDetector(
-          onTap: () => _openFs(photos, i),
-          child: ClipRRect(borderRadius: BorderRadius.circular(20),
-            child: Stack(fit: StackFit.expand, children: [
-              Image.file(File(photos[i]), fit: BoxFit.cover),
-              Positioned(top: 12, left: 12, child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-                child: Text(i < labels.length ? labels[i] : '', style: const TextStyle(color: Colors.white, fontSize: 13)))),
-              Positioned(bottom: 18, right: 12, child: Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-                child: const Icon(Icons.fullscreen, color: Colors.white, size: 20))),
-            ])))),
-      if (photos.length > 1) Positioned(bottom: 4, left: 0, right: 0,
-        child: Row(mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(photos.length, (i) => AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            width: _curPhoto == i ? 20 : 7, height: 7,
-            decoration: BoxDecoration(
-              color: _curPhoto == i ? const Color(0xFFFFD700) : Colors.white24,
-              borderRadius: BorderRadius.circular(4)))))),
-    ]));
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white12, width: 1.5),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(children: [
+          PageView.builder(controller: _photoCtrl, itemCount: photos.length,
+            onPageChanged: (i) => setState(() => _curPhoto = i),
+            itemBuilder: (_, i) => GestureDetector(
+              onTap: () => _openFs(photos, i),
+              child: Stack(fit: StackFit.expand, children: [
+                photos[i].startsWith('http')
+                    ? CachedNetworkImage(imageUrl: photos[i], fit: BoxFit.cover,
+                        placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Color(0xFFFFD700))),
+                        errorWidget: (context, url, error) => const Center(child: Icon(Icons.error, color: Colors.white54, size: 40)))
+                    : Image.file(File(photos[i]), fit: BoxFit.cover),
+                Positioned(bottom: 0, left: 0, right: 0, height: 60,
+                  child: Container(decoration: BoxDecoration(gradient: LinearGradient(
+                    colors: [Colors.transparent, Colors.black.withValues(alpha:0.55)],
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter)))),
+              ]),
+            ),
+          ),
+          Positioned(bottom: 12, left: 12, child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+            child: Text(_curPhoto < labels.length ? labels[_curPhoto] : '', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)))),
+          Positioned(bottom: 12, right: 12, child: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+            child: const Icon(Icons.fullscreen, color: Colors.white, size: 16))),
+          if (photos.length > 1) Positioned(top: 10, left: 0, right: 0,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(photos.length, (i) => AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: _curPhoto == i ? 16 : 6, height: 6,
+                decoration: BoxDecoration(
+                  color: _curPhoto == i ? const Color(0xFFFFD700) : Colors.white54,
+                  borderRadius: BorderRadius.circular(3)))))),
+        ]),
+      ),
+    );
   }
 }
 
@@ -305,7 +335,11 @@ class _FsViewerState extends State<_FsViewer> {
         PageView.builder(controller: _c, itemCount: widget.photos.length,
           onPageChanged: (i) => setState(() => _cur = i),
           itemBuilder: (_, i) => InteractiveViewer(minScale: 0.8, maxScale: 4.0,
-            child: Center(child: Image.file(File(widget.photos[i]), fit: BoxFit.contain)))),
+            child: Center(child: widget.photos[i].startsWith('http')
+              ? CachedNetworkImage(imageUrl: widget.photos[i], fit: BoxFit.contain,
+                  placeholder: (context, url) => const CircularProgressIndicator(color: Color(0xFFFFD700)),
+                  errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.white54, size: 40))
+              : Image.file(File(widget.photos[i]), fit: BoxFit.contain)))),
         if (widget.photos.length > 1) Positioned(bottom: 20, left: 0, right: 0,
           child: Row(mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(widget.photos.length, (i) => AnimatedContainer(

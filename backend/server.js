@@ -3,16 +3,35 @@ const cors = require('cors');
 const multer = require('multer');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const fs = require('fs');
+const rateLimit = require('express-rate-limit');
+const admin = require('firebase-admin');
 require('dotenv').config();
+
+admin.initializeApp();
 
 const app = express();   // ← app must be created FIRST
 
-// ─── Simple API key guard ───────────────────────────
-app.use('/analyze', (req, res, next) => {
-  if (req.headers['x-app-key'] !== process.env.APP_SECRET) {
-    return res.status(403).json({ success: false, error: 'Forbidden' });
+// ─── Security & Rate Limiting ───────────────────────────
+const analyzeLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  message: { success: false, error: 'Too many requests, please try again later.' }
+});
+
+// ─── Firebase Auth Guard ───────────────────────────
+app.use('/analyze', analyzeLimiter, async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, error: 'Unauthorized: missing or invalid token' });
   }
-  next();
+  const token = authHeader.split('Bearer ')[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.user = decodedToken;
+    next();
+  } catch (error) {
+    return res.status(401).json({ success: false, error: 'Unauthorized: token verification failed' });
+  }
 });
 
 // ─── Gemini Initialization ───────────────────────────
@@ -50,11 +69,48 @@ app.post(
     { name: 'left' }
   ]),
   async (req, res) => {
-    let filePaths = [];
-    try {
-      if (!req.files || !req.files['front']) {
-        return res.status(400).json({ success: false, error: 'Front image is required' });
-      }
+    let filePaths = [];
+    try {
+      if (!req.user || !req.user.uid) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+      
+      const uid = req.user.uid;
+      const userRef = admin.firestore().collection('users').doc(uid);
+      const userDoc = await userRef.get();
+      
+      let plan = 'free';
+      let uploads = { count: 0, lastReset: admin.firestore.Timestamp.now() };
+      
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        plan = data.plan || 'free';
+        if (data.uploads) uploads = data.uploads;
+      }
+      
+      const now = new Date();
+      const lastResetDate = uploads.lastReset && uploads.lastReset.toDate ? uploads.lastReset.toDate() : new Date();
+      
+      let limit = 6;
+      let windowMs = 30 * 24 * 60 * 60 * 1000;
+      
+      if (plan === 'premium') {
+        limit = 9;
+        windowMs = 24 * 60 * 60 * 1000;
+      }
+      
+      if (now.getTime() - lastResetDate.getTime() > windowMs) {
+        uploads.count = 0;
+        uploads.lastReset = admin.firestore.Timestamp.fromDate(now);
+      }
+      
+      if (uploads.count >= limit) {
+        return res.status(429).json({ success: false, error: 'Upload limit reached for your plan' });
+      }
+
+      if (!req.files || !req.files['front']) {
+        return res.status(400).json({ success: false, error: 'Front image is required' });
+      }
 
       const frontImg = req.files['front'][0];
       const rightImg = req.files['right']?.[0];
@@ -189,6 +245,12 @@ Return EXACTLY this JSON. No extra text.
         eyeShape: parsed.eyeShape || 'Unable to determine',
         eyeType: parsed.eyeType || 'Unable to determine',
       };
+
+      uploads.count += 1;
+      if (!uploads.lastReset || !uploads.lastReset.toDate) {
+        uploads.lastReset = admin.firestore.Timestamp.fromDate(now); 
+      }
+      await userRef.set({ uploads: uploads }, { merge: true });
 
       filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
 

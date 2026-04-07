@@ -9,8 +9,9 @@ import 'package:http_parser/http_parser.dart';
 import 'results_screen.dart';
 import 'scan_history.dart';
 import 'dart:async';
-
-
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:path_provider/path_provider.dart';
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -108,10 +109,15 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _isAnalyzing = true);
 
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      final idToken = await user?.getIdToken();
+
       const String backendUrl ='https://level-maxing-backend.onrender.com/analyze';
 
       var request = http.MultipartRequest('POST', Uri.parse(backendUrl));
-      request.headers['x-app-key'] = 'levelmax-secret-20242006'; // same value as APP_SECRET
+      if (idToken != null) {
+        request.headers['Authorization'] = 'Bearer $idToken';
+      }
 
       request.files.add(await http.MultipartFile.fromPath(
           'front', _frontImage!.path,
@@ -143,21 +149,56 @@ class _CameraScreenState extends State<CameraScreen> {
         await billing.initialize();
         await ScanCooldownService.recordScan(isPremium: billing.isPremium);
 
-        await ScanHistory.saveScan(data['scores'], _frontImage?.path, imagePaths: [
-  if (_frontImage != null) _frontImage!.path,
-  if (_rightImage != null) _rightImage!.path,
-  if (_leftImage != null) _leftImage!.path,
-]);
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
+        
+        Future<String?> processImage(File? file, String type) async {
+          if (file == null) return null;
+          try {
+            // First try to safely upload to Firebase Storage
+            final storageRef = FirebaseStorage.instance.ref().child('users/$userId/scans/${timestamp}_$type.jpg');
+            await storageRef.putFile(file).timeout(const Duration(seconds: 15));
+            return await storageRef.getDownloadURL();
+          } catch (e) {
+            print('⚠️ Firebase Storage upload failed ($type): $e');
+            // If Firebase Storage isn't enabled or rules deny access,
+            // reliably fallback to local persistent storage so it doesn't break
+            try {
+              final appDir = await getApplicationDocumentsDirectory();
+              final backupDir = Directory('${appDir.path}/scans');
+              if (!await backupDir.exists()) {
+                await backupDir.create(recursive: true);
+              }
+              final savedFallback = await file.copy('${backupDir.path}/${timestamp}_$type.jpg');
+              return savedFallback.path;
+            } catch (localError) {
+              print('Local fallback also failed: $localError');
+              return null;
+            }
+          }
+        }
+
+        final String? processedFront = await processImage(_frontImage, 'front');
+        final String? processedRight = await processImage(_rightImage, 'right');
+        final String? processedLeft = await processImage(_leftImage, 'left');
+
+        if (processedFront == null && _frontImage != null) {
+          throw Exception('Failed to securely save your photos. Check device storage.');
+        }
+
+        final List<String> finalImagePaths = [
+          if (processedFront != null) processedFront,
+          if (processedRight != null) processedRight,
+          if (processedLeft != null) processedLeft,
+        ];
+
+        await ScanHistory.saveScan(data['scores'], processedFront, imagePaths: finalImagePaths);
 
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => ResultsScreen(scores: data['scores'], imagePaths: [
-  if (_frontImage != null) _frontImage!.path,
-  if (_rightImage != null) _rightImage!.path,
-  if (_leftImage != null) _leftImage!.path,
-]),
+            builder: (_) => ResultsScreen(scores: data['scores'], imagePaths: finalImagePaths),
           ),
         );
       } else {
