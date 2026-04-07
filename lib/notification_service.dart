@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'dart:io';
 
 // This runs in the background even when app is closed
 @pragma('vm:entry-point')
@@ -58,15 +59,27 @@ class NotificationService {
   static Future<void> _saveTokenToFirestoreWithToken(String token) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      // 1. Cleanup old fields from main user profile
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'fcmToken': FieldValue.delete(),
+          'tokenUpdated': FieldValue.delete(),
+        });
+      } catch (_) {} // Ignore if field doesn't exist
+
+      // 2. Save FCM token in subcollection "tokens"
+      final safeTokenId = token.replaceAll('/', '_');
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
+          .collection('tokens')
+          .doc(safeTokenId)
           .set({
-        'fcmToken': token,
-        'tokenUpdated': FieldValue.serverTimestamp(),
-        'platform': 'android',
+        'token': token,
+        'platform': Platform.operatingSystem,
+        'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      debugPrint('FCM token saved to Firestore');
+      debugPrint('FCM token safely stored in tokens subcollection');
     }
   }
 
@@ -79,12 +92,16 @@ class NotificationService {
   static Future<void> removeTokenOnLogout() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .set({
-        'fcmToken': FieldValue.delete(),
-      }, SetOptions(merge: true));
+      final token = await _messaging.getToken();
+      if (token != null) {
+        final safeTokenId = token.replaceAll('/', '_');
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('tokens')
+            .doc(safeTokenId)
+            .delete();
+      }
     }
     await _messaging.deleteToken();
   }

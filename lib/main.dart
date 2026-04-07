@@ -16,12 +16,42 @@ import 'notification_service.dart';
 import 'lock_in_notification_service.dart'; // ← NEW
 import 'scan_cooldown_service.dart';
 import 'dart:ui';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-void main() async {
-  // 1. WAKE UP FLUTTER FIRST
-  WidgetsFlutterBinding.ensureInitialized();
-  
+void main() {
+  runZonedGuarded(() async {
+    // 1. WAKE UP FLUTTER FIRST
+    WidgetsFlutterBinding.ensureInitialized();
+    
+    // CUSTOM ERROR UI
+    ErrorWidget.builder = (FlutterErrorDetails details) {
+      bool isDebug = false;
+      assert(() { isDebug = true; return true; }());
+      if (isDebug) {
+        return ErrorWidget(details.exception);
+      }
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: Material(
+          color: const Color(0xFF0A0A0A),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Icon(Icons.error_outline, color: Color(0xFFFFD700), size: 60),
+                SizedBox(height: 20),
+                Text('Something went wrong', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                SizedBox(height: 8),
+                Text('Please try again', style: TextStyle(color: Colors.white54, fontSize: 14)),
+              ],
+            ),
+          ),
+        ),
+      );
+    };
+
   // 2. WAKE UP FIREBASE SECOND (with timeout)
   try {
     await Firebase.initializeApp().timeout(
@@ -49,7 +79,10 @@ void main() async {
 
   // 3. NOW TURN ON CRASHLYTICS (with error handling)
   try {
-    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+    };
     PlatformDispatcher.instance.onError = (error, stack) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
       return true;
@@ -157,6 +190,14 @@ void main() async {
 
   // 6. RUN THE APP
   runApp(MyApp(initialScreen: initialScreen));
+  }, (error, stack) {
+    debugPrint('Uncaught error in runZonedGuarded: $error');
+    try {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    } catch (e) {
+      debugPrint('Failed to report to Crashlytics: $e');
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {
