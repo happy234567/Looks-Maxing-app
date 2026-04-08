@@ -30,7 +30,7 @@ app.set('trust proxy', 1);
 // ─── Security & Rate Limiting ───────────────────────────
 const analyzeLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 100,
+  max: 50,
   message: { success: false, error: 'Too many requests, please try again later.' }
 });
 
