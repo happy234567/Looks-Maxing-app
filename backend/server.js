@@ -69,9 +69,24 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // -----------------------------
 // Multer Setup
 // -----------------------------
+
+// Auto-create uploads directory so multer never fails
+const uploadsDir = 'uploads/';
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 const upload = multer({
-  dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  dest: uploadsDir,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    // Only accept image files
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
 });
 
 app.use(cors());
@@ -114,6 +129,8 @@ app.post(
       if (userDoc.exists) {
         const data = userDoc.data();
         plan = data.plan || 'free';
+        // Also check isPremium flag set by the billing service
+        if (data.isPremium === true) plan = 'premium';
         if (data.uploads) uploads = data.uploads;
       }
 
@@ -134,11 +151,11 @@ app.post(
       }
 
       if (uploads.count >= limit) {
-        return res.status(429).json({ success: false, error: 'Upload limit reached for your plan' });
+        return res.status(429).json({ success: false, error: 'Upload limit reached for your plan.' });
       }
 
       if (!req.files || !req.files['front']) {
-        return res.status(400).json({ success: false, error: 'Front image is required' });
+        return res.status(400).json({ success: false, error: 'Front image is required.' });
       }
 
       const frontImg = req.files['front'][0];
@@ -148,6 +165,13 @@ app.post(
       filePaths.push(frontImg.path);
       if (rightImg) filePaths.push(rightImg.path);
       if (leftImg) filePaths.push(leftImg.path);
+
+      // Validate image files are readable
+      for (const fp of filePaths) {
+        if (!fs.existsSync(fp)) {
+          return res.status(400).json({ success: false, error: 'Failed to process uploaded images. Please try again.' });
+        }
+      }
 
       const model = genAI.getGenerativeModel({
         model: 'gemini-2.5-flash',
@@ -201,21 +225,23 @@ EYE TYPE:
 - Prey: large, open, high sclera show
 - Neutral: balanced
 
+IMPORTANT: You MUST return valid JSON with ALL fields. Every numeric field must be an integer between 0 and 100.
+
 Return EXACTLY this JSON. No extra text.
 {
-  "overall": <number>,
-  "skin": <number>,
-  "cheekbones": <number>,
-  "jawline": <number>,
-  "neck": <number>,
-  "masculinityFemininity": <number>,
-  "eyes": <number>,
-  "symmetry": <number>,
-  "maxPotential": <number>,
-  "faceShape": "<Oval|Round|Square|Heart|Diamond|Oblong|Triangle>",
-  "canthalTilt": "<Positive|Neutral|Negative>",
-  "eyeShape": "<Almond|Round|Hooded|Monolid|Upturned|Downturned>",
-  "eyeType": "<Hunter|Prey|Neutral>"
+  "overall": <number>,
+  "skin": <number>,
+  "cheekbones": <number>,
+  "jawline": <number>,
+  "neck": <number>,
+  "masculinityFemininity": <number>,
+  "eyes": <number>,
+  "symmetry": <number>,
+  "maxPotential": <number>,
+  "faceShape": "<Oval|Round|Square|Heart|Diamond|Oblong|Triangle>",
+  "canthalTilt": "<Positive|Neutral|Negative>",
+  "eyeShape": "<Almond|Round|Hooded|Monolid|Upturned|Downturned>",
+  "eyeType": "<Hunter|Prey|Neutral>"
 }`;
 
       const imageParts = [
@@ -225,11 +251,47 @@ Return EXACTLY this JSON. No extra text.
       if (rightImg) imageParts.push({ inlineData: { mimeType: rightImg.mimetype, data: toBase64(rightImg.path) } });
       if (leftImg) imageParts.push({ inlineData: { mimeType: leftImg.mimetype, data: toBase64(leftImg.path) } });
 
-      const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }]
-      });
+      let result;
+      try {
+        result = await model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }]
+        });
+      } catch (geminiError) {
+        console.error('Gemini API error:', geminiError.message || geminiError);
+        // Check for safety / content filter blocks
+        if (geminiError.message && (
+          geminiError.message.includes('SAFETY') ||
+          geminiError.message.includes('blocked') ||
+          geminiError.message.includes('HARM') ||
+          geminiError.message.includes('content filter')
+        )) {
+          filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+          return res.status(400).json({ success: false, error: 'Could not analyze this image. Please use a clear, well-lit photo of your face.' });
+        }
+        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        return res.status(500).json({ success: false, error: 'AI analysis failed. Please try again.' });
+      }
 
-      const rawText = result.response.text();
+      // Handle empty/blocked response
+      if (!result || !result.response) {
+        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        return res.status(500).json({ success: false, error: 'AI returned an empty response. Please try with a different photo.' });
+      }
+
+      let rawText;
+      try {
+        rawText = result.response.text();
+      } catch (textError) {
+        console.error('Failed to extract text from Gemini response:', textError.message);
+        // This often means the response was blocked by safety filters
+        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        return res.status(400).json({ success: false, error: 'Could not analyze this image. The photo may not contain a clear face.' });
+      }
+
+      if (!rawText || rawText.trim().length === 0) {
+        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        return res.status(500).json({ success: false, error: 'AI returned an empty response. Please try again.' });
+      }
 
       let parsed;
       try {
@@ -237,19 +299,22 @@ Return EXACTLY this JSON. No extra text.
         if (!jsonMatch) throw new Error("No valid JSON found");
         parsed = JSON.parse(jsonMatch[0]);
       } catch (err) {
+        console.error('JSON parse failed. Raw text:', rawText.substring(0, 200));
         filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
-        return res.status(500).json({ success: false, error: 'Gemini returned invalid JSON' });
+        return res.status(500).json({ success: false, error: 'AI returned an invalid response. Please try again.' });
       }
 
-      // Calculate overall as average of 7 traits
-      const skin = Math.round(parsed.skin ?? 0);
-      const cheekbones = Math.round(parsed.cheekbones ?? 0);
-      const jawline = Math.round(parsed.jawline ?? 0);
-      const neck = Math.round(parsed.neck ?? 0);
-      const masculinityFemininity = Math.round(parsed.masculinityFemininity ?? 0);
-      const eyes = Math.round(parsed.eyes ?? 0);
-      const symmetry = Math.round(parsed.symmetry ?? 0);
-      let maxPotential = Math.round(parsed.maxPotential ?? 0);
+      // Validate and clamp all required numeric fields (defaults to 50 if missing/NaN)
+      const clamp = (val, min, max) => Math.max(min, Math.min(max, Math.round(Number(val) || 50)));
+
+      const skin = clamp(parsed.skin, 0, 100);
+      const cheekbones = clamp(parsed.cheekbones, 0, 100);
+      const jawline = clamp(parsed.jawline, 0, 100);
+      const neck = clamp(parsed.neck, 0, 100);
+      const masculinityFemininity = clamp(parsed.masculinityFemininity, 0, 100);
+      const eyes = clamp(parsed.eyes, 0, 100);
+      const symmetry = clamp(parsed.symmetry, 0, 100);
+      let maxPotential = clamp(parsed.maxPotential, 0, 100);
 
       const calculatedOverall = Math.round(
         (skin + cheekbones + jawline + neck + masculinityFemininity + eyes + symmetry) / 7
@@ -258,6 +323,12 @@ Return EXACTLY this JSON. No extra text.
       if (maxPotential < calculatedOverall) {
         maxPotential = Math.min(calculatedOverall + 3, 99);
       }
+
+      // Validate string fields with strict allowed values
+      const validFaceShapes = ['Oval', 'Round', 'Square', 'Heart', 'Diamond', 'Oblong', 'Triangle'];
+      const validCanthalTilts = ['Positive', 'Neutral', 'Negative'];
+      const validEyeShapes = ['Almond', 'Round', 'Hooded', 'Monolid', 'Upturned', 'Downturned'];
+      const validEyeTypes = ['Hunter', 'Prey', 'Neutral'];
 
       const scores = {
         overall: calculatedOverall,
@@ -269,10 +340,10 @@ Return EXACTLY this JSON. No extra text.
         eyes,
         symmetry,
         maxPotential,
-        faceShape: parsed.faceShape || 'Unable to determine',
-        canthalTilt: parsed.canthalTilt || 'Unable to determine',
-        eyeShape: parsed.eyeShape || 'Unable to determine',
-        eyeType: parsed.eyeType || 'Unable to determine',
+        faceShape: validFaceShapes.includes(parsed.faceShape) ? parsed.faceShape : 'Oval',
+        canthalTilt: validCanthalTilts.includes(parsed.canthalTilt) ? parsed.canthalTilt : 'Neutral',
+        eyeShape: validEyeShapes.includes(parsed.eyeShape) ? parsed.eyeShape : 'Almond',
+        eyeType: validEyeTypes.includes(parsed.eyeType) ? parsed.eyeType : 'Neutral',
       };
 
       uploads.count += 1;
@@ -286,9 +357,11 @@ Return EXACTLY this JSON. No extra text.
       return res.json({ success: true, scores });
 
     } catch (error) {
-      console.error(error);
+      console.error('Analyze endpoint error:', error);
       filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
-      return res.status(500).json({ success: false, error: error.message });
+      // Sanitize error message — don't expose internals to the client
+      const safeMessage = 'An unexpected error occurred. Please try again.';
+      return res.status(500).json({ success: false, error: safeMessage });
     }
   }
 );
