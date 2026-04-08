@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -160,7 +161,9 @@ class _CameraScreenState extends State<CameraScreen> {
             await storageRef.putFile(file).timeout(const Duration(seconds: 15));
             return await storageRef.getDownloadURL();
           } catch (e) {
-            print('⚠️ Firebase Storage upload failed ($type): $e');
+            if (kDebugMode) {
+              print('⚠️ Firebase Storage upload failed ($type): $e');
+            }
             // If Firebase Storage isn't enabled or rules deny access,
             // reliably fallback to local persistent storage so it doesn't break
             try {
@@ -172,7 +175,9 @@ class _CameraScreenState extends State<CameraScreen> {
               final savedFallback = await file.copy('${backupDir.path}/${timestamp}_$type.jpg');
               return savedFallback.path;
             } catch (localError) {
-              print('Local fallback also failed: $localError');
+              if (kDebugMode) {
+                print('Local fallback also failed: $localError');
+              }
               return null;
             }
           }
@@ -187,9 +192,9 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
         final List<String> finalImagePaths = [
-          if (processedFront != null) processedFront,
-          if (processedRight != null) processedRight,
-          if (processedLeft != null) processedLeft,
+          ?processedFront,
+          ?processedRight,
+          ?processedLeft,
         ];
 
         await ScanHistory.saveScan(data['scores'], processedFront, imagePaths: finalImagePaths);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -52,144 +53,8 @@ void main() {
       );
     };
 
-  // 2. WAKE UP FIREBASE SECOND (with timeout)
-  try {
-    await Firebase.initializeApp().timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {
-        debugPrint("Firebase initialization timed out - running in offline mode");
-        throw Exception('Firebase timeout');
-      },
-    );
-    debugPrint("Firebase initialized successfully");
-  } catch (e) {
-    debugPrint("Firebase initialization failed: $e - App will run in limited offline mode");
-  }
-
-  // 2.5 ENABLE FIRESTORE OFFLINE PERSISTENCE
-  try {
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-    );
-    debugPrint("Firestore offline persistence enabled");
-  } catch (e) {
-    debugPrint("Firestore persistence setup failed: $e");
-  }
-
-  // 3. NOW TURN ON CRASHLYTICS (with error handling)
-  try {
-    FlutterError.onError = (FlutterErrorDetails details) {
-      FlutterError.presentError(details);
-      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-    };
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      return true;
-    };
-  } catch (e) {
-    debugPrint("Crashlytics setup failed (offline?): $e");
-  }
-
-  // 4. INITIALIZE ALL YOUR APP SERVICES (with error handling)
-  try {
-    await NotificationService.initialize().timeout(
-      const Duration(seconds: 3),
-      onTimeout: () => debugPrint("Notification service timed out"),
-    );
-  } catch (e) {
-    debugPrint("Notification service failed: $e");
-  }
-
-  try {
-    await LockInNotificationService.initialize().timeout(
-      const Duration(seconds: 3),
-      onTimeout: () => debugPrint("LockIn notification service timed out"),
-    );
-  } catch (e) {
-    debugPrint("LockIn notification service failed: $e");
-  }
-
-  try {
-    await ScanCooldownService.initialize().timeout(
-      const Duration(seconds: 3),
-      onTimeout: () => debugPrint("Scan cooldown service timed out"),
-    );
-  } catch (e) {
-    debugPrint("Scan cooldown service failed: $e");
-  }
-  
-  // Wrap billing in a try-catch so it doesn't crash the app if Google Play is unreachable offline
-  try {
-    await BillingService().initialize().timeout(
-      const Duration(seconds: 5),
-      onTimeout: () => debugPrint("Billing service timed out"),
-    );
-  } catch (e) {
-    debugPrint("Billing Service failed to initialize (likely offline): $e");
-  }
-
-  // 5. CHECK LOGGED IN USER (with aggressive offline handling)
-  final user = FirebaseAuth.instance.currentUser;
-  Widget initialScreen = const LoginScreen();
-
-  if (user != null) {
-    try {
-      // Add timeout to prevent hanging when offline - only wait 3 seconds
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get(const GetOptions(source: Source.cache)) // Try cache first
-          .timeout(
-            const Duration(seconds: 3),
-            onTimeout: () {
-              debugPrint("Firestore timeout - using local cache");
-              throw Exception('Firestore timeout');
-            },
-          );
-
-      if (doc.exists && doc.data()?['username'] != null && doc.data()?['username'] != '') {
-        final data = doc.data()!;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('username', data['username'] ?? '');
-        await prefs.setString('firstName', data['firstName'] ?? '');
-        await prefs.setString('gender', data['gender'] ?? '');
-        if (data['age'] != null) await prefs.setInt('age', data['age'] as int);
-        if (data['weight'] != null) await prefs.setDouble('weight', (data['weight'] as num).toDouble());
-        if (data['weightUnit'] != null) await prefs.setString('weightUnit', data['weightUnit'] as String);
-        if (data['height'] != null) await prefs.setDouble('height', (data['height'] as num).toDouble());
-        if (data['heightUnit'] != null) await prefs.setString('heightUnit', data['heightUnit'] as String);
-
-        // If user hasn't completed new onboarding (no age), send to onboarding
-        if (data['age'] == null) {
-          initialScreen = const OnboardingScreen();
-        } else {
-          initialScreen = const MainNavigation();
-        }
-      } else {
-        initialScreen = const OnboardingScreen();
-      }
-    } catch (e) {
-      debugPrint("Firestore fetch failed (likely offline): $e");
-      
-      // FALLBACK: Check if user has data in SharedPreferences (cached locally)
-      final prefs = await SharedPreferences.getInstance();
-      final hasUsername = prefs.getString('username') != null && prefs.getString('username') != '';
-      
-      if (hasUsername) {
-        // User has logged in before and we have cached data
-        debugPrint("Using cached user data from SharedPreferences");
-        initialScreen = const MainNavigation();
-      } else {
-        // No cached data - send to login screen
-        debugPrint("No cached data - showing login screen");
-        initialScreen = const LoginScreen();
-      }
-    }
-  }
-
-  // 6. RUN THE APP
-  runApp(MyApp(initialScreen: initialScreen));
+    // RUN SPLASH APP IMMEDIATELY
+    runApp(const SplashApp());
   }, (error, stack) {
     debugPrint('Uncaught error in runZonedGuarded: $error');
     try {
@@ -198,6 +63,134 @@ void main() {
       debugPrint('Failed to report to Crashlytics: $e');
     }
   });
+}
+
+class SplashApp extends StatelessWidget {
+  const SplashApp({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF0A0A0A),
+      ),
+      home: const SplashScreen(),
+    );
+  }
+}
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _initApp();
+  }
+
+  Future<void> _initApp() async {
+    // 2. WAKE UP FIREBASE SECOND (with timeout)
+    try {
+      await Firebase.initializeApp().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw Exception('Firebase timeout'),
+      );
+    } catch (e) {
+      debugPrint("Firebase init failed: $e");
+    }
+
+    try {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+    } catch (_) {}
+
+    try {
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.presentError(details);
+        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+      };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
+    } catch (_) {}
+
+    try {
+      await NotificationService.initialize().timeout(const Duration(seconds: 3));
+    } catch (_) {}
+
+    try {
+      await LockInNotificationService.initialize().timeout(const Duration(seconds: 3));
+    } catch (_) {}
+
+    try {
+      await ScanCooldownService.initialize().timeout(const Duration(seconds: 3));
+    } catch (_) {}
+
+    try {
+      await BillingService().initialize().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+
+    final user = FirebaseAuth.instance.currentUser;
+    Widget initialScreen = const LoginScreen();
+
+    if (user != null) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get(const GetOptions(source: Source.cache))
+            .timeout(const Duration(seconds: 3), onTimeout: () => throw Exception('timeout'));
+
+        if (doc.exists && doc.data()?['username'] != null && doc.data()?['username'] != '') {
+          final data = doc.data()!;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('username', data['username'] ?? '');
+          await prefs.setString('firstName', data['firstName'] ?? '');
+          await prefs.setString('gender', data['gender'] ?? '');
+          if (data['age'] != null) await prefs.setInt('age', data['age'] as int);
+          if (data['weight'] != null) await prefs.setDouble('weight', (data['weight'] as num).toDouble());
+          if (data['weightUnit'] != null) await prefs.setString('weightUnit', data['weightUnit'] as String);
+          if (data['height'] != null) await prefs.setDouble('height', (data['height'] as num).toDouble());
+          if (data['heightUnit'] != null) await prefs.setString('heightUnit', data['heightUnit'] as String);
+
+          if (data['age'] == null) {
+            initialScreen = const OnboardingScreen();
+          } else {
+            initialScreen = const MainNavigation();
+          }
+        } else {
+          initialScreen = const OnboardingScreen();
+        }
+      } catch (e) {
+        final prefs = await SharedPreferences.getInstance();
+        final hasUsername = prefs.getString('username') != null && prefs.getString('username') != '';
+        if (hasUsername) {
+          initialScreen = const MainNavigation();
+        } else {
+          initialScreen = const LoginScreen();
+        }
+      }
+    }
+
+    if (mounted) {
+      runApp(MyApp(initialScreen: initialScreen));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFF0A0A0A),
+      body: SizedBox.shrink(),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -608,7 +601,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               },
               child: CircleAvatar(
                 radius: 18,
-                backgroundColor: const Color(0xFFFFD700),
+                backgroundColor: const Color.fromRGBO(255, 215, 0, 1),
                 backgroundImage:
                     FirebaseAuth.instance.currentUser?.photoURL != null
                         ? NetworkImage(
@@ -628,7 +621,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
           child: Column(
             children: [
               const SizedBox(height: 40),
-              const Icon(Icons.face, color: Color(0xFFFFD700), size: 90),
+              const Icon(Icons.face, color: Color(0xFFFFD700), size: 120),
               const SizedBox(height: 24),
               const Text('Scan Your Face',
                   style: TextStyle(

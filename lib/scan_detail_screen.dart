@@ -99,7 +99,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> with SingleTickerPr
             ],
           ),
           const SizedBox(height: 12),
-          Text('Scanned on ' + _fmt(widget.scan.date), style: const TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 0.5)),
+          Text('Scanned on ${_fmt(widget.scan.date)}', style: const TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 0.5)),
           const SizedBox(height: 24),
 
           // Score breakdown grid

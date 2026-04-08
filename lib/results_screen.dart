@@ -60,15 +60,6 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
     return 'Below Average';
   }
 
-  String _tier(int s) {
-    if (s >= 90) return '🏆 Top 1%';
-    if (s >= 80) return '⭐ Top 10%';
-    if (s >= 70) return '✨ Top 25%';
-    if (s >= 60) return '👍 Top 40%';
-    if (s >= 50) return '📊 Average';
-    return '📈 Room to grow';
-  }
-
   void _openFs(List<String> p, int i) => Navigator.push(context,
     MaterialPageRoute(builder: (_) => _FsViewer(photos: p, initialIndex: i, labels: const ['Front','Right','Left'])));
 

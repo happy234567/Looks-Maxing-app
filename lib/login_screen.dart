@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -172,7 +173,12 @@ class _LoginScreenState extends State<LoginScreen> {
               const Text('Unlock Your True Potential',
                   style: TextStyle(color: Colors.white54, fontSize: 16)),
               const Spacer(),
-              const Icon(Icons.face, color: Color(0xFFFFD700), size: 100),
+              SvgPicture.asset(
+                'assets/images/logo.svg',
+                width: 130,
+                height: 130,
+                fit: BoxFit.contain,
+              ),
               const SizedBox(height: 30),
               const Text('AI-Powered Face Analysis',
                   style: TextStyle(
