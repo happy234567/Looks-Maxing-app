@@ -4,12 +4,17 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCAN COOLDOWN SERVICE
 // Free users  → 1 scan per 30 days
 // Premium     → 1 scan per 3 days
 // When cooldown ends → local notification fires
+//
+// Cooldown is stored in FIRESTORE (server-side, survives sign-out/app data
+// clear/reinstall). SharedPreferences is only used as a fast local cache.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ScanCooldownService {
@@ -50,17 +55,103 @@ class ScanCooldownService {
         ?.createNotificationChannel(channel);
   }
 
+  // ── Sync cooldown from Firestore into local cache ────────────────────────
+  // Call this after sign-in so the cooldown survives sign-out/reinstall.
+
+  static Future<void> syncFromFirestore() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get()
+          .timeout(const Duration(seconds: 5));
+
+      if (doc.exists && doc.data()?['lastScanDate'] != null) {
+        final lastScanStr = doc.data()!['lastScanDate'] as String;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_kLastScanDate, lastScanStr);
+        debugPrint('Scan cooldown synced from Firestore: $lastScanStr');
+      }
+    } catch (e) {
+      debugPrint('Failed to sync scan cooldown from Firestore: $e');
+    }
+  }
+
   // ── Save the date+time of the latest scan ────────────────────────────────
 
   static Future<void> recordScan({required bool isPremium}) async {
-    final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
-    await prefs.setString(_kLastScanDate, now.toIso8601String());
+    final nowStr = now.toIso8601String();
 
-    // Schedule "scan ready" notification
+    // 1. Save to local cache (fast reads)
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastScanDate, nowStr);
+
+    // 2. Save to Firestore (survives sign-out, app data clear, reinstall)
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .set({
+          'lastScanDate': nowStr,
+          'lastScanTimestamp': Timestamp.fromDate(now),
+        }, SetOptions(merge: true));
+        debugPrint('Scan cooldown saved to Firestore');
+      }
+    } catch (e) {
+      debugPrint('Failed to save scan cooldown to Firestore: $e');
+    }
+
+    // 3. Schedule "scan ready" notification
     final cooldownDays = isPremium ? 3 : 30;
     final notifTime = now.add(Duration(days: cooldownDays));
     await _scheduleReadyNotification(notifTime, isPremium: isPremium);
+  }
+
+  // ── Get the last scan date (Firestore first, local cache fallback) ──────
+
+  static Future<String?> _getLastScanDate() async {
+    final prefs = await SharedPreferences.getInstance();
+    final localStr = prefs.getString(_kLastScanDate);
+
+    // Try Firestore for the authoritative value
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get(const GetOptions(source: Source.cache))
+            .timeout(const Duration(seconds: 2), onTimeout: () => throw Exception('timeout'));
+
+        if (doc.exists && doc.data()?['lastScanDate'] != null) {
+          final firestoreStr = doc.data()!['lastScanDate'] as String;
+
+          // If Firestore has a NEWER scan date than local, use Firestore
+          // (handles case where local was cleared)
+          if (localStr == null) {
+            await prefs.setString(_kLastScanDate, firestoreStr);
+            return firestoreStr;
+          }
+
+          final localDate = DateTime.parse(localStr);
+          final firestoreDate = DateTime.parse(firestoreStr);
+          if (firestoreDate.isAfter(localDate)) {
+            await prefs.setString(_kLastScanDate, firestoreStr);
+            return firestoreStr;
+          }
+        }
+      }
+    } catch (_) {
+      // If Firestore cache fails, fall through to local
+    }
+
+    return localStr;
   }
 
   // ── Check if user can scan right now ────────────────────────────────────
@@ -73,8 +164,7 @@ class ScanCooldownService {
   // ── Get how much time is left (Duration.zero = can scan now) ─────────────
 
   static Future<Duration> getRemainingDuration({required bool isPremium}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastScanStr = prefs.getString(_kLastScanDate);
+    final lastScanStr = await _getLastScanDate();
 
     if (lastScanStr == null) return Duration.zero; // Never scanned before
 
@@ -91,8 +181,7 @@ class ScanCooldownService {
   // ── Get next scan DateTime (null if can scan now) ────────────────────────
 
   static Future<DateTime?> getNextScanTime({required bool isPremium}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastScanStr = prefs.getString(_kLastScanDate);
+    final lastScanStr = await _getLastScanDate();
     if (lastScanStr == null) return null;
 
     final lastScan = DateTime.parse(lastScanStr);
@@ -184,8 +273,7 @@ class ScanCooldownService {
   // ── Progress 0.0→1.0 for the countdown bar (1.0 = fully ready) ──────────
 
   static Future<double> getCooldownProgress({required bool isPremium}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastScanStr = prefs.getString(_kLastScanDate);
+    final lastScanStr = await _getLastScanDate();
     if (lastScanStr == null) return 1.0; // Never scanned = fully ready
 
     final lastScan = DateTime.parse(lastScanStr);

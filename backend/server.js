@@ -27,15 +27,8 @@ const app = express();
 
 app.set('trust proxy', 1);
 
-// ─── Security & Rate Limiting ───────────────────────────
-const analyzeLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 50,
-  message: { success: false, error: 'Too many requests, please try again later.' }
-});
-
 // ─── Firebase Auth Guard ───────────────────────────
-app.use('/analyze', analyzeLimiter, async (req, res, next) => {
+const authGuard = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ success: false, error: 'Unauthorized: missing or invalid token' });
@@ -54,7 +47,21 @@ app.use('/analyze', analyzeLimiter, async (req, res, next) => {
     }
     return res.status(401).json({ success: false, error: 'Unauthorized: token verification failed' });
   }
+};
+
+// ─── Security & Rate Limiting ───────────────────────────
+const analyzeLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many requests, please try again later.' },
+  keyGenerator: (req) => {
+    return req.user?.uid || req.ip;
+  },
 });
+
+app.use('/analyze', authGuard, analyzeLimiter);
 
 // ─── Gemini Initialization ───────────────────────────
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);

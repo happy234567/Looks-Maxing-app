@@ -9,6 +9,7 @@ import 'onboarding_screen.dart';
 import 'main.dart';
 import 'notification_service.dart';
 import 'deleted_users_service.dart';
+import 'scan_cooldown_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -110,6 +111,14 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       } catch (e) {
         debugPrint("Notification save failed (offline?): $e");
+      }
+      if (!mounted) return;
+
+      // Sync scan cooldown from Firestore (survives sign-out/data clear)
+      try {
+        await ScanCooldownService.syncFromFirestore();
+      } catch (e) {
+        debugPrint('Scan cooldown sync failed: $e');
       }
       if (!mounted) return;
 
