@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'login_screen.dart';
 import 'billing_service.dart';
 import 'notification_service.dart';
+import 'deleted_users_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -416,7 +417,10 @@ class _ProfilePageState extends State<ProfilePage> {
         title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24), SizedBox(width: 10),
           Text('Delete Account', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('This will permanently delete your account.', style: TextStyle(color: Colors.white, fontSize: 14)),
+          const Text('This will delete your account.', style: TextStyle(color: Colors.white, fontSize: 14)),
+          const SizedBox(height: 8),
+          const Text('Your data will be permanently removed after 7 days. You will not be able to sign in again during this period.',
+            style: TextStyle(color: Colors.white54, fontSize: 13)),
           const SizedBox(height: 12),
           const Text('Type DELETE to confirm:', style: TextStyle(color: Colors.white54, fontSize: 13)),
           const SizedBox(height: 8),
@@ -431,14 +435,13 @@ class _ProfilePageState extends State<ProfilePage> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white,
               disabledBackgroundColor: Colors.red.withValues(alpha:0.3),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            child: const Text('Delete Forever', style: TextStyle(fontWeight: FontWeight.bold))),
+            child: const Text('Delete Account', style: TextStyle(fontWeight: FontWeight.bold))),
         ],
       ),
     ));
     if (confirm == true) {
-      final p = await SharedPreferences.getInstance(); await p.clear();
-      await GoogleSignIn().signOut();
-      await FirebaseAuth.instance.currentUser?.delete();
+      // Soft-delete: store UID in deleted_users, mark profile, sign out
+      await DeletedUsersService.softDeleteAccount();
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
     }

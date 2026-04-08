@@ -12,7 +12,17 @@ import 'scan_history.dart';
 import 'dart:async';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:path_provider/path_provider.dart';
+
+/// Custom exception for auth/token errors to distinguish from generic exceptions
+class _AuthException implements Exception {
+  final String message;
+  _AuthException(this.message);
+  @override
+  String toString() => message;
+}
+
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -96,6 +106,91 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  /// Gets a fresh Firebase ID token, re-authenticating if necessary.
+  Future<String> _getFreshIdToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('You are not signed in. Please sign in and try again.');
+    }
+
+    // Try force-refreshing the existing token first
+    try {
+      final token = await user.getIdToken(true);
+      if (token != null && token.isNotEmpty) return token;
+    } catch (e) {
+      debugPrint('getIdToken(true) failed: $e');
+    }
+
+    // If force-refresh failed, try silent re-sign-in to get a brand new session
+    debugPrint('Force-refresh failed, attempting silent re-sign-in...');
+    try {
+      final googleUser = await GoogleSignIn().signInSilently();
+      if (googleUser != null) {
+        final googleAuth = await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+        final newToken = await userCredential.user?.getIdToken(true);
+        if (newToken != null && newToken.isNotEmpty) return newToken;
+      }
+    } catch (e) {
+      debugPrint('Silent re-sign-in failed: $e');
+    }
+
+    throw Exception('Authentication failed. Please sign out and sign in again.');
+  }
+
+  /// Sends the scan request to the backend with the given [idToken].
+  /// Returns the parsed response or throws.
+  Future<Map<String, dynamic>> _sendScanRequest(String idToken) async {
+    const String backendUrl = 'https://level-maxing-backend.onrender.com/analyze';
+
+    var request = http.MultipartRequest('POST', Uri.parse(backendUrl));
+    request.headers['Authorization'] = 'Bearer $idToken';
+
+    request.files.add(await http.MultipartFile.fromPath(
+        'front', _frontImage!.path,
+        contentType: MediaType('image', 'jpeg')));
+
+    if (_rightImage != null) {
+      request.files.add(await http.MultipartFile.fromPath(
+          'right', _rightImage!.path,
+          contentType: MediaType('image', 'jpeg')));
+    }
+
+    if (_leftImage != null) {
+      request.files.add(await http.MultipartFile.fromPath(
+          'left', _leftImage!.path,
+          contentType: MediaType('image', 'jpeg')));
+    }
+
+    var response = await request.send().timeout(
+      const Duration(seconds: 60),
+      onTimeout: () {
+        throw Exception('Server took too long to respond. Please try again.');
+      },
+    );
+
+    var responseBody = await response.stream.bytesToString();
+
+    // Handle HTTP-level auth errors before parsing JSON
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      throw _AuthException('Token rejected by server (HTTP ${response.statusCode})');
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception('Server error (HTTP ${response.statusCode}). Please try again later.');
+    }
+
+    try {
+      return jsonDecode(responseBody) as Map<String, dynamic>;
+    } catch (_) {
+      throw Exception('Invalid response from server. Please try again.');
+    }
+  }
+
   Future<void> _analyzePhotos() async {
     if (_frontImage == null) {
       if (!mounted) return;
@@ -110,40 +205,33 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _isAnalyzing = true);
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      final idToken = await user?.getIdToken();
+      // Get a fresh token
+      String idToken = await _getFreshIdToken();
 
-      const String backendUrl ='https://level-maxing-backend.onrender.com/analyze';
-
-      var request = http.MultipartRequest('POST', Uri.parse(backendUrl));
-      if (idToken != null) {
-        request.headers['Authorization'] = 'Bearer $idToken';
+      Map<String, dynamic> data;
+      try {
+        data = await _sendScanRequest(idToken);
+      } on _AuthException {
+        // Token was rejected — re-authenticate and retry once
+        debugPrint('Token rejected, re-authenticating and retrying...');
+        final googleUser = await GoogleSignIn().signInSilently();
+        if (googleUser != null) {
+          final googleAuth = await googleUser.authentication;
+          final credential = GoogleAuthProvider.credential(
+            accessToken: googleAuth.accessToken,
+            idToken: googleAuth.idToken,
+          );
+          final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+          final newToken = await userCredential.user?.getIdToken(true);
+          if (newToken == null || newToken.isEmpty) {
+            throw Exception('Re-authentication failed. Please sign out and sign in again.');
+          }
+          idToken = newToken;
+          data = await _sendScanRequest(idToken);
+        } else {
+          throw Exception('Could not re-authenticate. Please sign out and sign in again.');
+        }
       }
-
-      request.files.add(await http.MultipartFile.fromPath(
-          'front', _frontImage!.path,
-          contentType: MediaType('image', 'jpeg')));
-
-      if (_rightImage != null) {
-        request.files.add(await http.MultipartFile.fromPath(
-            'right', _rightImage!.path,
-            contentType: MediaType('image', 'jpeg')));
-      }
-
-      if (_leftImage != null) {
-        request.files.add(await http.MultipartFile.fromPath(
-            'left', _leftImage!.path,
-            contentType: MediaType('image', 'jpeg')));
-      }
-
-      var response = await request.send().timeout(
-        const Duration(seconds: 60),
-        onTimeout: () {
-          throw Exception('Server took too long to respond. Please try again.');
-          },
-        );
-      var responseBody = await response.stream.bytesToString();
-      var data = jsonDecode(responseBody);
 
       if (data['success'] == true) {
         final billing = BillingService();
@@ -207,7 +295,7 @@ class _CameraScreenState extends State<CameraScreen> {
           ),
         );
       } else {
-        throw Exception(data['error']);
+        throw Exception(data['error'] ?? 'Analysis failed. Please try again.');
       }
     } catch (e) {
       setState(() => _isAnalyzing = false);

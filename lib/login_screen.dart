@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'onboarding_screen.dart';
 import 'main.dart';
 import 'notification_service.dart';
+import 'deleted_users_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -35,8 +36,70 @@ class _LoginScreenState extends State<LoginScreen> {
         idToken: googleAuth.idToken,
       );
 
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
       if (!mounted) return;
+
+      final user = userCredential.user;
+      if (user == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
+      // ── CHECK DELETED USER COOLDOWN ──────────────────────────────────
+      // This runs server-side against Firestore, so clearing app data
+      // or reinstalling won't bypass the check.
+      final cooldownResult = await DeletedUsersService.checkCooldown(user.uid);
+      if (cooldownResult.blocked) {
+        // Sign out immediately — they cannot use the app yet
+        await FirebaseAuth.instance.signOut();
+        await GoogleSignIn().signOut();
+        if (!mounted) return;
+
+        // Show a prominent dialog instead of a dismissible snackbar
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(children: [
+              Icon(Icons.timer_outlined, color: Color(0xFFFFD700), size: 24),
+              SizedBox(width: 10),
+              Text('Account Cooldown', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold)),
+            ]),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.hourglass_top_rounded, color: Colors.white24, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                cooldownResult.message ?? 'Please wait before creating a new account.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Your account was recently deleted. For security, you must wait ${cooldownResult.daysRemaining} day${cooldownResult.daysRemaining == 1 ? '' : 's'} before signing in again.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+            ]),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFD700),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+      // ── END COOLDOWN CHECK ───────────────────────────────────────────
 
       // Save notification token for this user (with timeout)
       try {
@@ -49,13 +112,6 @@ class _LoginScreenState extends State<LoginScreen> {
         debugPrint("Notification save failed (offline?): $e");
       }
       if (!mounted) return;
-
-      // Check Firestore to see if user has completed onboarding
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
 
       try {
         // Add timeout to prevent hanging when offline
@@ -75,7 +131,9 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
 
         // Check if document exists AND has username field (means onboarding completed)
+        // Also check the document is not marked as deleted
         if (doc.exists &&
+            doc.data()?['deleted'] != true &&
             doc.data()?['username'] != null &&
             doc.data()?['username'] != '') {
           final data = doc.data()!;
@@ -175,8 +233,8 @@ class _LoginScreenState extends State<LoginScreen> {
               const Spacer(),
               SvgPicture.asset(
                 'assets/images/logo.svg',
-                width: 130,
-                height: 130,
+                width: 240,
+                height: 240,
                 fit: BoxFit.contain,
               ),
               const SizedBox(height: 30),

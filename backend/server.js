@@ -7,14 +7,30 @@ const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
 require('dotenv').config();
 
-admin.initializeApp();
+// ─── Firebase Admin Setup ───────────────────────────
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log("Firebase Admin initialized using FIREBASE_SERVICE_ACCOUNT env variable");
+  } else {
+    admin.initializeApp();
+    console.log("Firebase Admin initialized using default credentials");
+  }
+} catch (error) {
+  console.error("Firebase Admin initialization error:", error);
+}
 
-const app = express();   // ← app must be created FIRST
+const app = express();
+
+app.set('trust proxy', 1);
 
 // ─── Security & Rate Limiting ───────────────────────────
 const analyzeLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 10,
+  max: 100,
   message: { success: false, error: 'Too many requests, please try again later.' }
 });
 
@@ -24,12 +40,18 @@ app.use('/analyze', analyzeLimiter, async (req, res, next) => {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ success: false, error: 'Unauthorized: missing or invalid token' });
   }
-  const token = authHeader.split('Bearer ')[1];
+
+  const token = authHeader.split('Bearer ')[1].trim();
+
   try {
     const decodedToken = await admin.auth().verifyIdToken(token);
     req.user = decodedToken;
     next();
   } catch (error) {
+    console.error('Firebase token verification failed:', error.code || error.message);
+    if (error.code === 'auth/id-token-expired') {
+      return res.status(401).json({ success: false, error: 'Unauthorized: token expired' });
+    }
     return res.status(401).json({ success: false, error: 'Unauthorized: token verification failed' });
   }
 });
@@ -41,8 +63,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // Multer Setup
 // -----------------------------
 const upload = multer({
-  dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  dest: 'uploads/',
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
 app.use(cors());
@@ -53,8 +75,8 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Helper: Convert Image to Base64
 // -----------------------------
 const toBase64 = (filepath) => {
-  const data = fs.readFileSync(filepath);
-  return data.toString('base64');
+  const data = fs.readFileSync(filepath);
+  return data.toString('base64');
 };
 
 
@@ -62,48 +84,48 @@ const toBase64 = (filepath) => {
 // Analyze Route
 // -----------------------------
 app.post(
-  '/analyze',
-  upload.fields([
-    { name: 'front' },
-    { name: 'right' },
-    { name: 'left' }
-  ]),
-  async (req, res) => {
+  '/analyze',
+  upload.fields([
+    { name: 'front' },
+    { name: 'right' },
+    { name: 'left' }
+  ]),
+  async (req, res) => {
     let filePaths = [];
     try {
       if (!req.user || !req.user.uid) {
         return res.status(401).json({ success: false, error: 'Unauthorized' });
       }
-      
+
       const uid = req.user.uid;
       const userRef = admin.firestore().collection('users').doc(uid);
       const userDoc = await userRef.get();
-      
+
       let plan = 'free';
       let uploads = { count: 0, lastReset: admin.firestore.Timestamp.now() };
-      
+
       if (userDoc.exists) {
         const data = userDoc.data();
         plan = data.plan || 'free';
         if (data.uploads) uploads = data.uploads;
       }
-      
+
       const now = new Date();
       const lastResetDate = uploads.lastReset && uploads.lastReset.toDate ? uploads.lastReset.toDate() : new Date();
-      
+
       let limit = 6;
       let windowMs = 30 * 24 * 60 * 60 * 1000;
-      
+
       if (plan === 'premium') {
         limit = 9;
         windowMs = 24 * 60 * 60 * 1000;
       }
-      
+
       if (now.getTime() - lastResetDate.getTime() > windowMs) {
         uploads.count = 0;
         uploads.lastReset = admin.firestore.Timestamp.fromDate(now);
       }
-      
+
       if (uploads.count >= limit) {
         return res.status(429).json({ success: false, error: 'Upload limit reached for your plan' });
       }
@@ -112,24 +134,24 @@ app.post(
         return res.status(400).json({ success: false, error: 'Front image is required' });
       }
 
-      const frontImg = req.files['front'][0];
-      const rightImg = req.files['right']?.[0];
-      const leftImg = req.files['left']?.[0];
+      const frontImg = req.files['front'][0];
+      const rightImg = req.files['right']?.[0];
+      const leftImg = req.files['left']?.[0];
 
-      filePaths.push(frontImg.path);
-      if (rightImg) filePaths.push(rightImg.path);
-      if (leftImg) filePaths.push(leftImg.path);
+      filePaths.push(frontImg.path);
+      if (rightImg) filePaths.push(rightImg.path);
+      if (leftImg) filePaths.push(leftImg.path);
 
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-        generationConfig: {
-          temperature: 0, 
-          responseMimeType: 'application/json'
-        }
-      });
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: 'application/json'
+        }
+      });
 
-      // 🔥 THE 50/50 HYBRID PROMPT (PSL + APPEAL)
-      const prompt = `You are an elite facial aesthetics analysis AI. Your scoring system MUST strictly follow a 50/50 hybrid model.
+      // 🔥 THE 50/50 HYBRID PROMPT (PSL + APPEAL)
+      const prompt = `You are an elite facial aesthetics analysis AI. Your scoring system MUST strictly follow a 50/50 hybrid model.
 
 THE 50/50 SCORING FORMULA:
 Your final scores must be an equal blend of two metrics:
@@ -189,30 +211,30 @@ Return EXACTLY this JSON. No extra text.
   "eyeType": "<Hunter|Prey|Neutral>"
 }`;
 
-      const imageParts = [
-        { inlineData: { mimeType: frontImg.mimetype, data: toBase64(frontImg.path) } }
-      ];
+      const imageParts = [
+        { inlineData: { mimeType: frontImg.mimetype, data: toBase64(frontImg.path) } }
+      ];
 
-      if (rightImg) imageParts.push({ inlineData: { mimeType: rightImg.mimetype, data: toBase64(rightImg.path) } });
-      if (leftImg) imageParts.push({ inlineData: { mimeType: leftImg.mimetype, data: toBase64(leftImg.path) } });
+      if (rightImg) imageParts.push({ inlineData: { mimeType: rightImg.mimetype, data: toBase64(rightImg.path) } });
+      if (leftImg) imageParts.push({ inlineData: { mimeType: leftImg.mimetype, data: toBase64(leftImg.path) } });
 
-      const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }]
-      });
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }]
+      });
 
-      const rawText = result.response.text();
-      
-      let parsed;
-      try {
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error("No valid JSON found");
-        parsed = JSON.parse(jsonMatch[0]);
-      } catch (err) {
-        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
-        return res.status(500).json({ success: false, error: 'Gemini returned invalid JSON' });
-      }
+      const rawText = result.response.text();
 
-// Calculate overall as average of 7 traits
+      let parsed;
+      try {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("No valid JSON found");
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch (err) {
+        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        return res.status(500).json({ success: false, error: 'Gemini returned invalid JSON' });
+      }
+
+      // Calculate overall as average of 7 traits
       const skin = Math.round(parsed.skin ?? 0);
       const cheekbones = Math.round(parsed.cheekbones ?? 0);
       const jawline = Math.round(parsed.jawline ?? 0);
@@ -248,27 +270,27 @@ Return EXACTLY this JSON. No extra text.
 
       uploads.count += 1;
       if (!uploads.lastReset || !uploads.lastReset.toDate) {
-        uploads.lastReset = admin.firestore.Timestamp.fromDate(now); 
+        uploads.lastReset = admin.firestore.Timestamp.fromDate(now);
       }
       await userRef.set({ uploads: uploads }, { merge: true });
 
-      filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+      filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
 
-      return res.json({ success: true, scores });
+      return res.json({ success: true, scores });
 
-    } catch (error) {
-      console.error(error);
-      filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
-      return res.status(500).json({ success: false, error: error.message });
-    }
-  }
+    } catch (error) {
+      console.error(error);
+      filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
 );
 
 // -----------------------------
 // Root Route
 // -----------------------------
 app.get('/', (req, res) => {
-  res.send('Level Maxing Backend Running 🚀');
+  res.send('Level Maxing Backend Running 🚀');
 });
 
 // -----------------------------
@@ -276,5 +298,5 @@ app.get('/', (req, res) => {
 // -----------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

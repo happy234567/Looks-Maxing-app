@@ -16,6 +16,7 @@ import 'billing_service.dart';
 import 'notification_service.dart';
 import 'lock_in_notification_service.dart'; // ← NEW
 import 'scan_cooldown_service.dart';
+import 'deleted_users_service.dart';
 import 'dart:ui';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -141,40 +142,89 @@ class _SplashScreenState extends State<SplashScreen> {
     Widget initialScreen = const LoginScreen();
 
     if (user != null) {
+      // Check if user is in deletion cooldown
       try {
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get(const GetOptions(source: Source.cache))
-            .timeout(const Duration(seconds: 3), onTimeout: () => throw Exception('timeout'));
-
-        if (doc.exists && doc.data()?['username'] != null && doc.data()?['username'] != '') {
-          final data = doc.data()!;
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('username', data['username'] ?? '');
-          await prefs.setString('firstName', data['firstName'] ?? '');
-          await prefs.setString('gender', data['gender'] ?? '');
-          if (data['age'] != null) await prefs.setInt('age', data['age'] as int);
-          if (data['weight'] != null) await prefs.setDouble('weight', (data['weight'] as num).toDouble());
-          if (data['weightUnit'] != null) await prefs.setString('weightUnit', data['weightUnit'] as String);
-          if (data['height'] != null) await prefs.setDouble('height', (data['height'] as num).toDouble());
-          if (data['heightUnit'] != null) await prefs.setString('heightUnit', data['heightUnit'] as String);
-
-          if (data['age'] == null) {
-            initialScreen = const OnboardingScreen();
-          } else {
-            initialScreen = const MainNavigation();
-          }
-        } else {
-          initialScreen = const OnboardingScreen();
-        }
-      } catch (e) {
-        final prefs = await SharedPreferences.getInstance();
-        final hasUsername = prefs.getString('username') != null && prefs.getString('username') != '';
-        if (hasUsername) {
-          initialScreen = const MainNavigation();
-        } else {
+        final cooldown = await DeletedUsersService.checkCooldown(user.uid);
+        if (cooldown.blocked) {
+          // User is in cooldown — sign them out and force login screen
+          await FirebaseAuth.instance.signOut();
           initialScreen = const LoginScreen();
+        } else {
+          // Not in cooldown — check normal profile
+          try {
+            final doc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get(const GetOptions(source: Source.cache))
+                .timeout(const Duration(seconds: 3), onTimeout: () => throw Exception('timeout'));
+
+            if (doc.exists && doc.data()?['deleted'] != true && doc.data()?['username'] != null && doc.data()?['username'] != '') {
+              final data = doc.data()!;
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('username', data['username'] ?? '');
+              await prefs.setString('firstName', data['firstName'] ?? '');
+              await prefs.setString('gender', data['gender'] ?? '');
+              if (data['age'] != null) await prefs.setInt('age', data['age'] as int);
+              if (data['weight'] != null) await prefs.setDouble('weight', (data['weight'] as num).toDouble());
+              if (data['weightUnit'] != null) await prefs.setString('weightUnit', data['weightUnit'] as String);
+              if (data['height'] != null) await prefs.setDouble('height', (data['height'] as num).toDouble());
+              if (data['heightUnit'] != null) await prefs.setString('heightUnit', data['heightUnit'] as String);
+
+              if (data['age'] == null) {
+                initialScreen = const OnboardingScreen();
+              } else {
+                initialScreen = const MainNavigation();
+              }
+            } else {
+              initialScreen = const OnboardingScreen();
+            }
+          } catch (e) {
+            final prefs = await SharedPreferences.getInstance();
+            final hasUsername = prefs.getString('username') != null && prefs.getString('username') != '';
+            if (hasUsername) {
+              initialScreen = const MainNavigation();
+            } else {
+              initialScreen = const LoginScreen();
+            }
+          }
+        }
+      } catch (_) {
+        // Cooldown check failed (offline?) — fallback to normal flow
+        try {
+          final doc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get(const GetOptions(source: Source.cache))
+              .timeout(const Duration(seconds: 3), onTimeout: () => throw Exception('timeout'));
+
+          if (doc.exists && doc.data()?['deleted'] != true && doc.data()?['username'] != null && doc.data()?['username'] != '') {
+            final data = doc.data()!;
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('username', data['username'] ?? '');
+            await prefs.setString('firstName', data['firstName'] ?? '');
+            await prefs.setString('gender', data['gender'] ?? '');
+            if (data['age'] != null) await prefs.setInt('age', data['age'] as int);
+            if (data['weight'] != null) await prefs.setDouble('weight', (data['weight'] as num).toDouble());
+            if (data['weightUnit'] != null) await prefs.setString('weightUnit', data['weightUnit'] as String);
+            if (data['height'] != null) await prefs.setDouble('height', (data['height'] as num).toDouble());
+            if (data['heightUnit'] != null) await prefs.setString('heightUnit', data['heightUnit'] as String);
+
+            if (data['age'] == null) {
+              initialScreen = const OnboardingScreen();
+            } else {
+              initialScreen = const MainNavigation();
+            }
+          } else {
+            initialScreen = const OnboardingScreen();
+          }
+        } catch (e) {
+          final prefs = await SharedPreferences.getInstance();
+          final hasUsername = prefs.getString('username') != null && prefs.getString('username') != '';
+          if (hasUsername) {
+            initialScreen = const MainNavigation();
+          } else {
+            initialScreen = const LoginScreen();
+          }
         }
       }
     }
