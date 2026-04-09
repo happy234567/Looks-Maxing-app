@@ -29,7 +29,7 @@ class ScanCooldownService {
   static Future<void> initialize() async {
     tzdata.initializeTimeZones();
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher_foreground');
     const initSettings = InitializationSettings(android: androidInit);
 
     await _plugin.initialize(
@@ -230,6 +230,7 @@ class ScanCooldownService {
         summaryText: 'Level Max',
       ),
       ticker: 'Face scan available!',
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
       when: scheduledTime.millisecondsSinceEpoch,
       showWhen: true,
     );

@@ -31,7 +31,7 @@ class LockInNotificationService {
     tzdata.initializeTimeZones();
 
     // Android setup
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher_foreground');
     const initSettings = InitializationSettings(android: androidInit);
 
     await _plugin.initialize(
@@ -161,6 +161,7 @@ class LockInNotificationService {
       enableVibration: true,
       vibrationPattern: vibration,
       category: AndroidNotificationCategory.reminder,
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
       fullScreenIntent: isDanger,
       ticker: isDanger ? 'Streak in danger!' : 'Task reminder',
       when: scheduledTime.millisecondsSinceEpoch,
