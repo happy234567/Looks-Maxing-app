@@ -5,10 +5,15 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+// ignore_for_file: avoid_relative_lib_imports
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_windowmanager_example/main.dart';
+import '../lib/main.dart';
+
+
+
 
 void main() {
   testWidgets('Verify Secure Mode', (WidgetTester tester) async {
@@ -24,4 +29,10 @@ void main() {
       findsOneWidget,
     );
   });
+}
+
+extension on String? {
+  bool startsWith(String pattern) {
+    return this?.startsWith(pattern) ?? false;
+  }
 }

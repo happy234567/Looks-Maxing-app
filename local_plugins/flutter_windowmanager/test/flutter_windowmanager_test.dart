@@ -8,6 +8,7 @@ void main() {
   final List<MethodCall> log = <MethodCall>[];
 
   setUp(() {
+    // ignore: deprecated_member_use
     channel.setMockMethodCallHandler((MethodCall methodCall) async {
       log.add(methodCall);
       return true;
@@ -15,6 +16,7 @@ void main() {
   });
 
   tearDown(() {
+    // ignore: deprecated_member_use
     channel.setMockMethodCallHandler(null);
     log.clear();
   });

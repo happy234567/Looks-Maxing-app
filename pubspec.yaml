@@ -34,6 +34,7 @@ dependencies:
   flutter_svg: ^2.0.9
   flutter_windowmanager:
     path: local_plugins/flutter_windowmanager
+  screenshot_callback: ^3.0.1
 
 
 dev_dependencies:

@@ -7,6 +7,7 @@ import 'package:flutter_windowmanager/flutter_windowmanager.dart';
 import 'package:level_maxing/guide_content.dart';
 import 'billing_service.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:screenshot_callback/screenshot_callback.dart';
 
 class GuidePage extends StatefulWidget {
   const GuidePage({super.key});
@@ -20,6 +21,7 @@ class _GuidePageState extends State<GuidePage>
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
   final BillingService _billingService = BillingService();
+  late ScreenshotCallback _screenshotCallback;
 
   @override
   void initState() {
@@ -30,6 +32,27 @@ class _GuidePageState extends State<GuidePage>
     _fadeCtrl.forward();
     
     _secureScreen();
+
+    _screenshotCallback = ScreenshotCallback();
+    _screenshotCallback.addListener(() {
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.security, color: Colors.white, size: 20),
+                SizedBox(width: 10),
+                Expanded(child: Text('Screenshots are disabled for privacy & policy 🔒')),
+              ],
+            ),
+            backgroundColor: Color(0xFF222222),
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    });
 
     // Listen for when the user buys premium so the page updates!
     _billingService.addListener(_onBillingUpdated);
@@ -59,6 +82,7 @@ class _GuidePageState extends State<GuidePage>
   @override
   void dispose() {
     _unsecureScreen();
+    _screenshotCallback.dispose();
     // Stop listening when we leave the page
     _billingService.removeListener(_onBillingUpdated);
     _fadeCtrl.dispose();
@@ -171,22 +195,6 @@ class _GuidePageState extends State<GuidePage>
                             fontSize: 24,
                             fontWeight: FontWeight.w700,
                             letterSpacing: -0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            'Screenshots are disabled on this page for privacy 🔒',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
                           ),
                         ),
                       ],
