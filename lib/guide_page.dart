@@ -1,7 +1,9 @@
 // ignore_for_file: use_build_context_synchronously
 
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_windowmanager/flutter_windowmanager.dart';
 import 'package:level_maxing/guide_content.dart';
 import 'billing_service.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -27,8 +29,26 @@ class _GuidePageState extends State<GuidePage>
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
     
+    _secureScreen();
+
     // Listen for when the user buys premium so the page updates!
     _billingService.addListener(_onBillingUpdated);
+  }
+
+  Future<void> _secureScreen() async {
+    if (Platform.isAndroid) {
+      try {
+        await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _unsecureScreen() async {
+    if (Platform.isAndroid) {
+      try {
+        await FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
+      } catch (_) {}
+    }
   }
 
   // Rebuild the screen when billing state changes
@@ -38,6 +58,7 @@ class _GuidePageState extends State<GuidePage>
 
   @override
   void dispose() {
+    _unsecureScreen();
     // Stop listening when we leave the page
     _billingService.removeListener(_onBillingUpdated);
     _fadeCtrl.dispose();
@@ -140,14 +161,35 @@ class _GuidePageState extends State<GuidePage>
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
                   child: Center(
-                    child: Text(
-                      'Guide',
-                      style: TextStyle(
-                        color: const Color(0xFFFFD700),
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
-                      ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Guide',
+                          style: TextStyle(
+                            color: Color(0xFFFFD700),
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Screenshots are disabled on this page for privacy 🔒',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
