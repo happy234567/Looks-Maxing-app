@@ -1,4 +1,13 @@
 {
     "cmake.sourceDirectory": "C:/level_maxing/linux",
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "java.project.sourcePaths": [
+        "lib",
+        "local_plugins/flutter_windowmanager/android/src/main/java"
+    ],
+    "java.problems.filters": [
+        {
+            "pattern": "**/local_plugins/**"
+        }
+    ]
 }
