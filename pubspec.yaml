@@ -32,7 +32,8 @@ dependencies:
   firebase_storage: ^12.4.10
   cached_network_image: ^3.3.1
   flutter_svg: ^2.0.9
-  flutter_windowmanager: ^0.2.0
+  flutter_windowmanager:
+    path: local_plugins/flutter_windowmanager
 
 
 dev_dependencies:
