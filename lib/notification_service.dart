@@ -1,25 +1,49 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
 
 // This runs in the background even when app is closed
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Firebase is already initialized in main, so we just handle the message
+  // Use plugin to show the notification if needed, or let OS handle it
   debugPrint('Background notification received: ${message.notification?.title}');
 }
 
 class NotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  static final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
   // Call this once when the app starts
   static Future<void> initialize() async {
-    // 1. Register background handler
+    // 1. Android/iOS local notification settings
+    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@drawable/ic_stat_notification');
+    
+    const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    const InitializationSettings initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+
+    await _localNotifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        // Handle tapping on notification
+        debugPrint('Notification clicked: ${response.payload}');
+      },
+    );
+
+    // 2. Register background handler
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    // 2. Ask the user for permission to send notifications
+    // 3. Ask the user for permission
     final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
@@ -29,19 +53,58 @@ class NotificationService {
 
     debugPrint('Notification permission: ${settings.authorizationStatus}');
 
-    // 3. Get this device's unique token and save it to Firebase
+    // 4. Get and save token
     await _saveTokenToFirestore();
 
-    // 4. If the token refreshes (rare), save the new one
+    // 5. Handle foreground notifications
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint('Foreground notification: ${message.notification?.title}');
+      if (message.notification != null) {
+        showPremiumNotification(
+          title: message.notification!.title ?? 'Level Max Up! 🚀',
+          body: message.notification!.body ?? 'Check your latest scan results now.',
+        );
+      }
+    });
+
+    // 6. Refresh token listener
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
       _saveTokenToFirestoreWithToken(newToken);
     });
+  }
 
-    // 5. Handle notification tapped when app is in foreground
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('Foreground notification: ${message.notification?.title}');
-      // You can show a snackbar or dialog here if you want
-    });
+  /// Shows a DuoLingo-style premium looking notification
+  static Future<void> showPremiumNotification({
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'high_importance_channel',
+      'High Importance Notifications',
+      channelDescription: 'Used for critical app alerts and scan results.',
+      importance: Importance.max,
+      priority: Priority.high,
+      ticker: 'ticker',
+      icon: '@drawable/ic_stat_notification',
+      largeIcon: null,
+      styleInformation: BigTextStyleInformation(''),
+      color: Color(0xFFFFD700), // Gold theme color (tints the monochrome icon)
+      enableLights: true,
+      ledColor: Color(0xFFFFD700),
+      ledOnMs: 1000,
+      ledOffMs: 500,
+    );
+
+    const NotificationDetails details = NotificationDetails(android: androidDetails);
+
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch.hashCode,
+      title,
+      body,
+      details,
+      payload: payload,
+    );
   }
 
   // Gets the FCM token for this device and saves it to the user's Firestore doc
@@ -59,15 +122,13 @@ class NotificationService {
   static Future<void> _saveTokenToFirestoreWithToken(String token) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      // 1. Cleanup old fields from main user profile
       try {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
           'fcmToken': FieldValue.delete(),
           'tokenUpdated': FieldValue.delete(),
         });
-      } catch (_) {} // Ignore if field doesn't exist
+      } catch (_) {}
 
-      // 2. Save FCM token in subcollection "tokens"
       final safeTokenId = token.replaceAll('/', '_');
       await FirebaseFirestore.instance
           .collection('users')
@@ -83,12 +144,10 @@ class NotificationService {
     }
   }
 
-  // Call this after login so the token gets linked to the logged-in user
   static Future<void> saveTokenAfterLogin() async {
     await _saveTokenToFirestore();
   }
 
-  // Call this on logout to remove the token so they stop getting notifications
   static Future<void> removeTokenOnLogout() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
