@@ -9,5 +9,10 @@
         {
             "pattern": "**/local_plugins/**"
         }
+    ],
+    "java.import.exclusions": [
+        "**/local_plugins/**",
+        "**/build/**",
+        "**/example/**"
     ]
 }

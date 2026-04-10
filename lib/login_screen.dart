@@ -235,158 +235,165 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: Colors.black, // Makes mask seamless with a dark SVG background
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Spacer(flex: 2),
-              
-              // Top Section: Titles
-              const Text(
-                'LEVEL MAX',
-                style: TextStyle(
-                  color: Color(0xFFFFD700),
-                  fontSize: 34,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 4,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Unlock Your True Potential',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              
-              const Spacer(flex: 3),
-              
-              // Middle Section: Focused Image with Subtle Glow
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: withOpacity,
-                      blurRadius: 80,
-                      spreadRadius: 20,
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: SvgPicture.asset(
-                    'assets/images/logo.svg',
-                    width: 250,
-                    height: 250,
-                    fit: BoxFit.contain,
+        child: SizedBox(
+          width: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Spacer(flex: 1),
+                
+                // Top Section: Titles
+                const Text(
+                  'LEVEL MAX',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFFFD700),
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 4,
                   ),
                 ),
-              ),
-              
-              const Spacer(flex: 3),
-              
-              // Bottom Section: Features & Actions
-              const Text(
-                'AI-Powered Face Analysis',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
+                const SizedBox(height: 8),
+                const Text(
+                  'Unlock Your True Potential',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Get brutally honest ratings\nand improve your looks.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 15,
-                  height: 1.4,
-                ),
-              ),
-              
-              const Spacer(flex: 2),
-              
-              // Premium Button
-              SizedBox(
-                height: 60, // Fixed height to maintain UI consistency and prevent layout shift
-                child: Container(
-                  width: double.infinity,
+                
+                const Spacer(flex: 1),
+                
+                // Middle Section: Focused Image with Subtle Glow
+                Container(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(30),
+                    shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFFFFD700).withOpacity(0.25),
-                        blurRadius: 15,
-                        offset: const Offset(0, 5),
+                        color: withOpacity,
+                        blurRadius: 80,
+                        spreadRadius: 20,
                       ),
                     ],
                   ),
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _signInWithGoogle,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD700),
-                      foregroundColor: Colors.black,
-                      disabledBackgroundColor: const Color(0xFFFFD700).withOpacity(0.8),
-                      disabledForegroundColor: Colors.black45,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      elevation: 0, // Shadow handled by Container
+                  child: Center(
+                    child: SvgPicture.asset(
+                      'assets/images/logo.svg',
+                      width: 250,
+                      height: 250,
+                      fit: BoxFit.contain,
                     ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.black,
-                              strokeWidth: 2.5,
-                            ),
-                          )
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.login, size: 24),
-                              SizedBox(width: 12),
-                              Text(
-                                'Continue with Google',
-                                style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                            ],
-                          ),
                   ),
                 ),
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Terms & Privacy
-              GestureDetector(
-                onTap: _launchLegal,
-                child: const Text(
-                  'By continuing you agree to our Terms of Service & Privacy Policy',
+                
+                const Spacer(flex: 1),
+                
+                // Bottom Section: Features & Actions
+                const Text(
+                  'AI-Powered Face Analysis',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white54,
-                    fontSize: 12,
-                    decoration: TextDecoration.underline,
-                    decorationColor: Colors.white54,
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
                   ),
                 ),
-              ),
-              
-              const Spacer(flex: 1),
-            ],
+                const SizedBox(height: 12),
+                const Text(
+                  'Get brutally honest ratings\nand improve your looks.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 15,
+                    height: 1.4,
+                  ),
+                ),
+                
+                const Spacer(flex: 2),
+                
+                // Premium Button
+                SizedBox(
+                  height: 60, // Fixed height to maintain UI consistency and prevent layout shift
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFFFD700).withOpacity(0.25),
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _signInWithGoogle,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFD700),
+                        foregroundColor: Colors.black,
+                        disabledBackgroundColor: const Color(0xFFFFD700).withOpacity(0.8),
+                        disabledForegroundColor: Colors.black45,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        elevation: 0, // Shadow handled by Container
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.black,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.login, size: 24),
+                                SizedBox(width: 12),
+                                Text(
+                                  'Continue with Google',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Terms & Privacy
+                GestureDetector(
+                  onTap: _launchLegal,
+                  child: const Text(
+                    'By continuing you agree to our Terms of Service & Privacy Policy',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                      decoration: TextDecoration.underline,
+                      decorationColor: Colors.white54,
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),

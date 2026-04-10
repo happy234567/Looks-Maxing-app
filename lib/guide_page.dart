@@ -7,7 +7,7 @@ import 'package:flutter_windowmanager/flutter_windowmanager.dart';
 import 'package:level_maxing/guide_content.dart';
 import 'billing_service.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:screenshot_callback/screenshot_callback.dart';
+import 'package:screen_capture_event/screen_capture_event.dart';
 
 class GuidePage extends StatefulWidget {
   const GuidePage({super.key});
@@ -21,7 +21,7 @@ class _GuidePageState extends State<GuidePage>
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
   final BillingService _billingService = BillingService();
-  late ScreenshotCallback _screenshotCallback;
+  late ScreenCaptureEvent _screenshotCallback;
 
   @override
   void initState() {
@@ -33,15 +33,16 @@ class _GuidePageState extends State<GuidePage>
     
     _secureScreen();
 
-    _screenshotCallback = ScreenshotCallback();
-    _screenshotCallback.addListener(() {
+    _screenshotCallback = ScreenCaptureEvent();
+
+    _screenshotCallback.addScreenShotListener((filePath) {
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Row(
               children: [
-                Icon(Icons.security, color: Colors.white, size: 20),
+                Icon(Icons.security, color: Color.fromARGB(255, 249, 246, 246), size: 20),
                 SizedBox(width: 10),
                 Expanded(child: Text('Screenshots are disabled for privacy & policy 🔒')),
               ],
@@ -53,6 +54,8 @@ class _GuidePageState extends State<GuidePage>
         );
       }
     });
+
+    _screenshotCallback.watch();
 
     // Listen for when the user buys premium so the page updates!
     _billingService.addListener(_onBillingUpdated);
@@ -327,14 +330,12 @@ class _GuidePageState extends State<GuidePage>
   }
 
   Widget _premiumBanner() {
-    // NEW: Calculate the cheapest monthly price dynamically from the yearly plan
     String startingPriceText = 'Tap to see why';
     try {
       final yearlyProduct = _billingService.products.firstWhere((p) => p.id == 'premium_yearly');
       final cheapestMonthly = yearlyProduct.rawPrice / 12;
       startingPriceText = 'From ${yearlyProduct.currencySymbol}${cheapestMonthly.toStringAsFixed(0)}/month — Tap to see why';
     } catch (e) {
-      // Fallback if products haven't loaded yet from Google Play
       startingPriceText = 'View Premium Plans — Tap to see why';
     }
 
@@ -407,7 +408,6 @@ class _GuidePageState extends State<GuidePage>
                 borderRadius: BorderRadius.circular(30),
               ),
               child: Text(
-                // NEW: Use the dynamic text here!
                 startingPriceText,
                 style: const TextStyle(
                   color: Colors.black,
@@ -575,19 +575,16 @@ class _ArticleCardState extends State<_ArticleCard> {
           duration: const Duration(milliseconds: 100),
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
-            // Premium cards get a dark gold tint background
             color: isPremium
                 ? const Color(0xFF181818)
                 : (_pressed ? const Color(0xFF1C1C1C) : const Color(0xFF141414)),
             borderRadius: BorderRadius.circular(16),
-            // Glowing gold border for premium, subtle white for free
             border: Border.all(
               color: isPremium
                   ? const Color(0xFFFFD700).withValues(alpha:_pressed ? 0.8 : 0.55)
                   : Colors.white.withValues(alpha:_pressed ? 0.1 : 0.06),
               width: isPremium ? 1.5 : 1,
             ),
-            // Glow shadow only for premium
             boxShadow: isPremium
                 ? [
                     BoxShadow(
@@ -607,7 +604,6 @@ class _ArticleCardState extends State<_ArticleCard> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             child: Row(children: [
-              // Emoji Icon
               Container(
                 width: 52,
                 height: 52,
@@ -628,12 +624,10 @@ class _ArticleCardState extends State<_ArticleCard> {
                 ),
               ),
               const SizedBox(width: 14),
-              // Text
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Premium badge above title
                     if (isPremium) ...[
                       Container(
                         margin: const EdgeInsets.only(bottom: 5),
@@ -682,7 +676,6 @@ class _ArticleCardState extends State<_ArticleCard> {
                 ),
               ),
               const SizedBox(width: 10),
-              // Arrow or Lock
               Container(
                 width: 32,
                 height: 32,
@@ -950,7 +943,6 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
   @override
   void initState() {
     super.initState();
-    // Listen to billing changes while the sheet is open
     widget.billingService.addListener(_onBillingUpdate);
   }
 
@@ -961,7 +953,6 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
   }
 
   void _onBillingUpdate() {
-    // If the purchase was successful, automatically close this popup!
     if (widget.billingService.isPremium && mounted) {
       Navigator.pop(context);
     }
@@ -1130,7 +1121,6 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
 
                 const SizedBox(height: 24),
                 
-                // RESTORE PURCHASES BUTTON
                 TextButton(
                   onPressed: () async {
                     try {
@@ -1246,7 +1236,6 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
   }
 
   Widget _pricingBlock() {
-    // Dynamically grab the real products from Google Play
     ProductDetails? monthly = _getProduct('premium_monthly');
     ProductDetails? sixMonth = _getProduct('premium_6month');
     ProductDetails? yearly = _getProduct('premium_yearly');
@@ -1282,15 +1271,12 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
               ),
             ]),
             const SizedBox(height: 12),
-            
             const Text('Our Premium Plans:',
                 style: TextStyle(
                     color: Colors.white70,
                     fontSize: 13,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            
-            // SMART BUTTON 1: Monthly
             _priceRow(
               monthly != null ? '${monthly.price} / month' : 'Loading price...', 
               '', 
@@ -1298,8 +1284,6 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
               monthly != null ? () => widget.billingService.buySubscription(monthly) : null
             ),
             const SizedBox(height: 6),
-            
-            // SMART BUTTON 2: 6 Months
             _priceRow(
               sixMonth != null ? '${sixMonth.price} / 6 months' : 'Loading price...', 
               _getMonthlyBreakdown(sixMonth, 6), 
@@ -1307,15 +1291,12 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
               sixMonth != null ? () => widget.billingService.buySubscription(sixMonth) : null
             ),
             const SizedBox(height: 6),
-            
-            // SMART BUTTON 3: Yearly
             _priceRow(
               yearly != null ? '${yearly.price} / 12 months' : 'Loading price...', 
               _getMonthlyBreakdown(yearly, 12), 
               false,
               yearly != null ? () => widget.billingService.buySubscription(yearly) : null
             ),
-            
             const SizedBox(height: 10),
             const Text(
               'Tap a plan to securely subscribe via Google Play.',
