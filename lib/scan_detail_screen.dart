@@ -67,7 +67,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> with SingleTickerPr
     final overall = sc['overall'] as int? ?? 0;
     final gl = _gender == 'Female' ? 'Femininity' : 'Masculinity';
     final sColor = _scoreColor(overall);
-    final photos = widget.scan.imagePaths.where((p) => p.startsWith('http') || File(p).existsSync()).toList();
+    final photos = widget.scan.imagePaths.where((p) => p.startsWith('http')).toList();
 
     final items = [
       ('Skin Quality', sc['skin'] as int? ?? 0, Icons.auto_awesome),
