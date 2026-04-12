@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
@@ -71,12 +72,8 @@ class DeletedUsersService {
 
       if (diff.inDays >= cooldownDays) {
         // Cooldown expired -> allow re-registration
-        // Clean up the deleted_users entry
         await _deletedUsersCol.doc(uid).delete();
-
-        // Also clean up the old user data (marked as deleted)
         await _cleanupDeletedUserData(uid);
-
         return const DeletedUserCheckResult(blocked: false);
       } else {
         // Still in cooldown
@@ -84,13 +81,12 @@ class DeletedUsersService {
         return DeletedUserCheckResult(
           blocked: true,
           daysRemaining: remaining,
-          message: 'You can create your account after $remaining day${remaining == 1 ? '' : 's'}.',
+          message:
+              'You can create your account after $remaining day${remaining == 1 ? '' : 's'}.',
         );
       }
     } catch (e) {
       debugPrint('Error checking deleted user cooldown: $e');
-      // On error (e.g., offline), fall through and allow login
-      // to avoid permanently locking out users
       return const DeletedUserCheckResult(blocked: false);
     }
   }
@@ -99,11 +95,12 @@ class DeletedUsersService {
 
   /// Performs a soft deletion of the current user's account.
   ///
-  /// 1. Stores UID + metadata in `deleted_users` collection
-  /// 2. Marks the user's Firestore profile as deleted
-  /// 3. Removes notification tokens
-  /// 4. Clears local preferences
-  /// 5. Signs out (does NOT delete from Firebase Auth)
+  /// 1. Deletes all face scan images from Firebase Storage
+  /// 2. Stores UID + metadata in `deleted_users` collection
+  /// 3. Marks the user's Firestore profile as deleted
+  /// 4. Removes notification tokens
+  /// 5. Clears local preferences
+  /// 6. Signs out (Firebase Auth entry deleted after 7 days via Cloud Function)
   static Future<void> softDeleteAccount() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -112,7 +109,23 @@ class DeletedUsersService {
     final email = user.email ?? '';
     final now = DateTime.now();
 
-    // 1. Store in deleted_users collection
+    // 1. Delete all face scan images from Firebase Storage
+    // This ensures user's biometric data (face photos) is removed immediately
+    try {
+      final storageRef = FirebaseStorage.instanceFor(
+              bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app')
+          .ref()
+          .child('users/$uid/scans');
+      final ListResult result = await storageRef.listAll();
+      for (final item in result.items) {
+        await item.delete();
+      }
+      debugPrint('Deleted ${result.items.length} scan images for UID: $uid');
+    } catch (e) {
+      debugPrint('Storage cleanup failed (non-fatal): $e');
+    }
+
+    // 2. Store in deleted_users collection
     await _deletedUsersCol.doc(uid).set({
       'uid': uid,
       'email': email,
@@ -120,22 +133,22 @@ class DeletedUsersService {
       'deletedAtTimestamp': Timestamp.fromDate(now),
     });
 
-    // 2. Mark user profile as deleted (preserves data for potential restore)
+    // 3. Mark user profile as deleted
     await _firestore.collection('users').doc(uid).set({
       'deleted': true,
       'deletedAt': now.toIso8601String(),
     }, SetOptions(merge: true));
 
-    // 3. Remove notification tokens
+    // 4. Remove notification tokens
     try {
       await NotificationService.removeTokenOnLogout();
     } catch (_) {}
 
-    // 4. Clear local preferences
+    // 5. Clear local preferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
 
-    // 5. Sign out (keep the Firebase Auth account alive for now)
+    // 6. Sign out (Firebase Auth entry is deleted after 7 days via Cloud Function)
     await GoogleSignIn().signOut();
     await FirebaseAuth.instance.signOut();
   }
@@ -143,28 +156,13 @@ class DeletedUsersService {
   // --- CLEANUP AFTER COOLDOWN EXPIRES ---
 
   /// Removes old Firestore data for a deleted user after cooldown expires.
-  ///
-  /// This deletes:
-  ///   - The user's profile document in `users`
-  ///   - Subcollections: `tokens`, `scans`, `data`
-  ///
-  /// Note: Firebase Auth deletion requires the Admin SDK (server-side) or
-  ///       a re-authenticated session, so for full cleanup of the Auth entry
-  ///       after 7 days, use a Cloud Function (see docs below).
   static Future<void> _cleanupDeletedUserData(String uid) async {
     try {
       final userRef = _firestore.collection('users').doc(uid);
 
-      // Delete subcollection: tokens
       await _deleteSubcollection(userRef.collection('tokens'));
-
-      // Delete subcollection: scans
       await _deleteSubcollection(userRef.collection('scans'));
-
-      // Delete subcollection: data
       await _deleteSubcollection(userRef.collection('data'));
-
-      // Delete the main user document
       await userRef.delete();
 
       debugPrint('Cleaned up deleted user data for UID: $uid');
@@ -180,7 +178,6 @@ class DeletedUsersService {
       for (final doc in snapshots.docs) {
         await doc.reference.delete();
       }
-      // If there were more than 100, recurse
       if (snapshots.docs.length == 100) {
         await _deleteSubcollection(col);
       }
@@ -190,22 +187,17 @@ class DeletedUsersService {
   // --- RESTORE ACCOUNT (OPTIONAL) ---
 
   /// Restores a soft-deleted account if still within the cooldown period.
-  ///
-  /// Removes the `deleted` flag and the `deleted_users` entry so the user
-  /// can continue using their account as before.
   static Future<bool> restoreAccount(String uid) async {
     try {
       final doc = await _deletedUsersCol.doc(uid).get();
       if (!doc.exists) return false;
 
-      // Remove deleted flag from user profile
       await _firestore.collection('users').doc(uid).update({
         'deleted': FieldValue.delete(),
         'deletedAt': FieldValue.delete(),
         'restoredAt': DateTime.now().toIso8601String(),
       });
 
-      // Remove from deleted_users collection
       await _deletedUsersCol.doc(uid).delete();
 
       debugPrint('Account restored for UID: $uid');
