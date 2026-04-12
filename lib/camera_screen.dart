@@ -121,7 +121,6 @@ class _CameraScreenState extends State<CameraScreen> {
       throw Exception('You are not signed in. Please sign in and try again.');
     }
 
-    // Try force-refreshing the existing token first
     try {
       final token = await user.getIdToken(true);
       if (token != null && token.isNotEmpty) return token;
@@ -129,7 +128,6 @@ class _CameraScreenState extends State<CameraScreen> {
       debugPrint('getIdToken(true) failed: $e');
     }
 
-    // If force-refresh failed, try silent re-sign-in to get a brand new session
     debugPrint('Force-refresh failed, attempting silent re-sign-in...');
     try {
       final googleUser = await GoogleSignIn().signInSilently();
@@ -139,7 +137,8 @@ class _CameraScreenState extends State<CameraScreen> {
           accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
         );
-        final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+        final userCredential =
+            await FirebaseAuth.instance.signInWithCredential(credential);
         final newToken = await userCredential.user?.getIdToken(true);
         if (newToken != null && newToken.isNotEmpty) return newToken;
       }
@@ -147,17 +146,18 @@ class _CameraScreenState extends State<CameraScreen> {
       debugPrint('Silent re-sign-in failed: $e');
     }
 
-    throw Exception('Authentication failed. Please sign out and sign in again.');
+    throw Exception(
+        'Authentication failed. Please sign out and sign in again.');
   }
 
   /// Sends the scan request to the backend with the given [idToken].
-  /// Returns the parsed response or throws.
   Future<Map<String, dynamic>> _sendScanRequest(String idToken) async {
-    const String backendUrl = 'https://level-maxing-backend.onrender.com/analyze';
+    const String backendUrl =
+        'https://level-maxing-backend.onrender.com/analyze';
 
-    // Build a fresh MultipartRequest each call (requests are single-use)
     http.MultipartRequest buildRequest() {
-      var request = http.MultipartRequest('POST', Uri.parse(backendUrl));
+      var request =
+          http.MultipartRequest('POST', Uri.parse(backendUrl));
       request.headers['Authorization'] = 'Bearer $idToken';
       return request;
     }
@@ -180,7 +180,6 @@ class _CameraScreenState extends State<CameraScreen> {
           contentType: MediaType('image', 'jpeg')));
     }
 
-    // 180s timeout — Render free-tier cold starts can take 1-2 minutes
     http.StreamedResponse response;
     try {
       response = await request.send().timeout(
@@ -190,51 +189,62 @@ class _CameraScreenState extends State<CameraScreen> {
         },
       );
     } on SocketException {
-      throw Exception('No internet connection. Please check your network and try again.');
+      throw Exception(
+          'No internet connection. Please check your network and try again.');
     } on TimeoutException {
-      throw Exception('Server took too long to respond. Please try again in a few minutes.');
+      throw Exception(
+          'Server took too long to respond. Please try again in a few minutes.');
     }
 
     var responseBody = await response.stream.bytesToString();
 
-    // Handle HTTP-level auth errors before parsing JSON
     if (response.statusCode == 401 || response.statusCode == 403) {
-      throw _AuthException('Token rejected by server (HTTP ${response.statusCode})');
+      throw _AuthException(
+          'Token rejected by server (HTTP ${response.statusCode})');
     }
 
     if (response.statusCode == 429) {
-      // Parse the error message from the body if possible
       try {
         final body = jsonDecode(responseBody) as Map<String, dynamic>;
-        throw Exception(body['error'] ?? 'Upload limit reached. Please try again later.');
+        throw Exception(body['error'] ??
+            'Upload limit reached. Please try again later.');
       } catch (e) {
-        if (e is Exception && e.toString().contains('Upload limit')) rethrow;
-        throw Exception('Upload limit reached. Please try again later.');
+        if (e is Exception && e.toString().contains('Upload limit')) {
+          rethrow;
+        }
+        throw Exception(
+            'Upload limit reached. Please try again later.');
       }
     }
 
     if (response.statusCode == 500) {
-      // Try to extract meaningful error from server response
       try {
         final body = jsonDecode(responseBody) as Map<String, dynamic>;
         final serverError = body['error'] as String? ?? '';
-        if (serverError.contains('face') || serverError.contains('image') || serverError.contains('JSON')) {
-          throw Exception('Could not analyze your photo. Please ensure your face is clearly visible and try again.');
+        if (serverError.contains('face') ||
+            serverError.contains('image') ||
+            serverError.contains('JSON')) {
+          throw Exception(
+              'Could not analyze your photo. Please ensure your face is clearly visible and try again.');
         }
       } catch (e) {
-        if (e is Exception && e.toString().contains('Could not analyze')) rethrow;
+        if (e is Exception && e.toString().contains('Could not analyze')) {
+          rethrow;
+        }
       }
       throw Exception('Server error. Please try again later.');
     }
 
     if (response.statusCode != 200) {
-      throw Exception('Server error (HTTP ${response.statusCode}). Please try again later.');
+      throw Exception(
+          'Server error (HTTP ${response.statusCode}). Please try again later.');
     }
 
     try {
       return jsonDecode(responseBody) as Map<String, dynamic>;
     } catch (_) {
-      throw Exception('Invalid response from server. Please try again.');
+      throw Exception(
+          'Invalid response from server. Please try again.');
     }
   }
 
@@ -249,12 +259,12 @@ class _CameraScreenState extends State<CameraScreen> {
       return;
     }
 
-    // Verify the front image file actually exists on disk
     if (!_frontImage!.existsSync()) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Photo file not found. Please retake the photo.'),
+            content:
+                Text('Photo file not found. Please retake the photo.'),
             backgroundColor: Colors.red),
       );
       return;
@@ -263,19 +273,20 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _isAnalyzing = true);
 
     try {
-      // Get a fresh token
+      // ── 1. Get auth token ──────────────────────────────────────────
       String idToken;
       try {
         idToken = await _getFreshIdToken();
       } catch (e) {
-        throw Exception('Sign-in session expired. Please go back and try again.');
+        throw Exception(
+            'Sign-in session expired. Please go back and try again.');
       }
 
+      // ── 2. Send scan to backend ────────────────────────────────────
       Map<String, dynamic> data;
       try {
         data = await _sendScanRequest(idToken);
       } on _AuthException {
-        // Token was rejected — re-authenticate and retry once
         debugPrint('Token rejected, re-authenticating and retrying...');
         try {
           final googleUser = await GoogleSignIn().signInSilently();
@@ -285,19 +296,24 @@ class _CameraScreenState extends State<CameraScreen> {
               accessToken: googleAuth.accessToken,
               idToken: googleAuth.idToken,
             );
-            final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-            final newToken = await userCredential.user?.getIdToken(true);
+            final userCredential = await FirebaseAuth.instance
+                .signInWithCredential(credential);
+            final newToken =
+                await userCredential.user?.getIdToken(true);
             if (newToken == null || newToken.isEmpty) {
-              throw Exception('Re-authentication failed. Please sign out and sign in again.');
+              throw Exception(
+                  'Re-authentication failed. Please sign out and sign in again.');
             }
             idToken = newToken;
             data = await _sendScanRequest(idToken);
           } else {
-            throw Exception('Could not re-authenticate. Please sign out and sign in again.');
+            throw Exception(
+                'Could not re-authenticate. Please sign out and sign in again.');
           }
         } catch (e) {
           if (e is _AuthException) {
-            throw Exception('Authentication failed. Please sign out and sign in again.');
+            throw Exception(
+                'Authentication failed. Please sign out and sign in again.');
           }
           rethrow;
         }
@@ -306,55 +322,71 @@ class _CameraScreenState extends State<CameraScreen> {
       if (!mounted) return;
 
       if (data['success'] == true) {
-        // Validate scores exist and have the expected shape
+        // ── 3. Validate scores ───────────────────────────────────────
         final scores = data['scores'];
         if (scores == null || scores is! Map<String, dynamic>) {
-          throw Exception('Server returned incomplete results. Please try again.');
+          throw Exception(
+              'Server returned incomplete results. Please try again.');
         }
-
-        // Validate at least the overall score is present
         if (scores['overall'] == null && scores['skin'] == null) {
-          throw Exception('Analysis produced no scores. Please ensure your face is clearly visible.');
+          throw Exception(
+              'Analysis produced no scores. Please ensure your face is clearly visible.');
         }
 
-        // Record the scan cooldown
+        // ── 4. Record cooldown ───────────────────────────────────────
         try {
           final billing = BillingService();
           await billing.initialize();
-          await ScanCooldownService.recordScan(isPremium: billing.isPremium);
+          await ScanCooldownService.recordScan(
+              isPremium: billing.isPremium);
         } catch (e) {
           debugPrint('Failed to record scan cooldown: $e');
-          // Non-fatal: don't block the user from seeing results
         }
 
-        // Process and save images (wrapped so failures here won't lose the scan)
+        // ── 5. Upload images to Firebase Storage ─────────────────────
         List<String> finalImagePaths = [];
         String? processedFront;
         try {
           final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
+          final userId =
+              FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
 
           Future<String?> processImage(File? file, String type) async {
-  if (file == null || !file.existsSync()) return null;
-  try {
-    final storageRef = FirebaseStorage.instanceFor(
-        bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app')
-    .ref()
-    .child('users/$userId/scans/${timestamp}_$type.jpg');
-    final url = await storageRef.getDownloadURL();
-    debugPrint('✅ Uploaded $type image: $url');
-    return url;
-  } catch (e) {
-    // Upload failed — return null instead of saving a local path.
-    // Local paths are wiped on reinstall and break the Progress page.
-    debugPrint('⚠️ Firebase Storage upload failed ($type): $e');
-    return null;
-  }
-}
+            if (file == null || !file.existsSync()) return null;
+            try {
+              debugPrint(
+                  '[Storage] Starting upload for $type, file: ${file.path}');
+              final storageRef = FirebaseStorage.instanceFor(
+                      bucket:
+                          'gs://looks-maxing-app-a8f7c.firebasestorage.app')
+                  .ref()
+                  .child(
+                      'users/$userId/scans/${timestamp}_$type.jpg');
+              await storageRef
+                  .putFile(file)
+                  .timeout(const Duration(seconds: 60));
+              final url = await storageRef.getDownloadURL();
+              debugPrint('[Storage] Upload success ($type): $url');
+              return url;
+            } catch (e, stack) {
+              debugPrint('[Storage] UPLOAD FAILED ($type): $e');
+              debugPrint('[Storage] Stack: $stack');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Image upload failed: $e'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 10),
+                ));
+              }
+              return null;
+            }
+          }
 
           processedFront = await processImage(_frontImage, 'front');
-          final String? processedRight = await processImage(_rightImage, 'right');
-          final String? processedLeft = await processImage(_leftImage, 'left');
+          final String? processedRight =
+              await processImage(_rightImage, 'right');
+          final String? processedLeft =
+              await processImage(_leftImage, 'left');
 
           finalImagePaths = [
             ?processedFront,
@@ -363,44 +395,57 @@ class _CameraScreenState extends State<CameraScreen> {
           ];
         } catch (e) {
           debugPrint('Image processing error (non-fatal): $e');
-          // Still show results even if image saving failed
         }
 
-        // Save scan history (non-fatal if it fails)
-        // Save scan history (non-fatal if it fails)
+        // ── 6. Save scan to Firestore ────────────────────────────────
         try {
-          await ScanHistory.saveScan(scores, processedFront, imagePaths: finalImagePaths);
+          await ScanHistory.saveScan(scores, processedFront,
+              imagePaths: finalImagePaths);
         } catch (e) {
           debugPrint('Failed to save scan history: $e');
         }
 
         if (!mounted) return;
 
-        // Show ad for free users, then navigate to results
-        final billing = BillingService();
-        await billing.initialize();
+        // ── 7. Show ad then navigate to results ──────────────────────
+        // We capture scores/paths here so the closure works correctly
+        final capturedScores = scores;
+        final capturedPaths = finalImagePaths;
 
         void goToResults() {
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImagePaths),
+              builder: (_) => ResultsScreen(
+                scores: capturedScores,
+                imagePaths: capturedPaths,
+              ),
             ),
           );
         }
 
+        // Check premium status fresh before deciding to show ad
+        final billing = BillingService();
+        await billing.initialize();
+
         if (billing.isPremium) {
+          // Premium users go straight to results, no ad
           goToResults();
         } else {
+          // Free users see an interstitial ad first
+          // If ad fails to load/show, goToResults is called anyway
           await AdService().showScanAd(onComplete: goToResults);
         }
+
       } else {
         final errorMsg = data['error'];
         if (errorMsg is String && errorMsg.contains('limit')) {
-          throw Exception('You\'ve reached your scan limit. Please wait for the cooldown to end.');
+          throw Exception(
+              'You\'ve reached your scan limit. Please wait for the cooldown to end.');
         }
-        throw Exception(errorMsg ?? 'Analysis failed. Please try again.');
+        throw Exception(
+            errorMsg ?? 'Analysis failed. Please try again.');
       }
     } catch (e) {
       if (!mounted) return;
@@ -441,10 +486,12 @@ class _CameraScreenState extends State<CameraScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const CircularProgressIndicator(color: Color(0xFFFFD700)),
+              const CircularProgressIndicator(
+                  color: Color(0xFFFFD700)),
               const SizedBox(height: 24),
               const Text('Analyzing your face...',
-                  style: TextStyle(color: Colors.white, fontSize: 18)),
+                  style:
+                      TextStyle(color: Colors.white, fontSize: 18)),
               const SizedBox(height: 8),
               const Text('AI is calculating your scores',
                   style: TextStyle(color: Colors.white54)),
@@ -472,8 +519,8 @@ class _CameraScreenState extends State<CameraScreen> {
               children: List.generate(
                   3,
                   (i) => Container(
-                        margin:
-                            const EdgeInsets.symmetric(horizontal: 6),
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 6),
                         width: 60,
                         height: 6,
                         decoration: BoxDecoration(
@@ -487,8 +534,8 @@ class _CameraScreenState extends State<CameraScreen> {
             const SizedBox(height: 16),
 
             Text('Step ${_currentStep + 1} of 3',
-                style:
-                    const TextStyle(color: Colors.white54, fontSize: 14)),
+                style: const TextStyle(
+                    color: Colors.white54, fontSize: 14)),
             const SizedBox(height: 4),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -517,8 +564,8 @@ class _CameraScreenState extends State<CameraScreen> {
             const SizedBox(height: 8),
             Text(step['instruction']!,
                 textAlign: TextAlign.center,
-                style:
-                    const TextStyle(color: Colors.white54, fontSize: 14)),
+                style: const TextStyle(
+                    color: Colors.white54, fontSize: 14)),
             const SizedBox(height: 20),
 
             // Photo preview
@@ -526,8 +573,8 @@ class _CameraScreenState extends State<CameraScreen> {
               child: _currentImage != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(20),
-                      child:
-                          Image.file(_currentImage!, fit: BoxFit.cover),
+                      child: Image.file(_currentImage!,
+                          fit: BoxFit.cover),
                     )
                   : Container(
                       decoration: BoxDecoration(
@@ -541,11 +588,12 @@ class _CameraScreenState extends State<CameraScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(step['icon']!,
-                                style: const TextStyle(fontSize: 60)),
+                                style:
+                                    const TextStyle(fontSize: 60)),
                             const SizedBox(height: 16),
                             const Text('Take or select a photo',
-                                style:
-                                    TextStyle(color: Colors.white54)),
+                                style: TextStyle(
+                                    color: Colors.white54)),
                           ],
                         ),
                       ),
@@ -555,7 +603,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
             // Buttons
             if (_currentImage == null) ...[
-              // Camera button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -565,7 +612,8 @@ class _CameraScreenState extends State<CameraScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFD700),
                     foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30)),
                   ),
@@ -573,7 +621,6 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
               const SizedBox(height: 10),
 
-              // Gallery button (all steps)
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -584,14 +631,14 @@ class _CameraScreenState extends State<CameraScreen> {
                       style: TextStyle(color: Colors.white70)),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.white24),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30)),
                   ),
                 ),
               ),
 
-              // Skip button (only for optional steps)
               if (!isRequired) ...[
                 const SizedBox(height: 10),
                 TextButton(
@@ -609,7 +656,8 @@ class _CameraScreenState extends State<CameraScreen> {
                       onPressed: _retakePhoto,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white38),
+                        side:
+                            const BorderSide(color: Colors.white38),
                         padding:
                             const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
@@ -630,8 +678,9 @@ class _CameraScreenState extends State<CameraScreen> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30)),
                       ),
-                      child: Text(
-                          _currentStep < 2 ? 'Confirm ✓' : 'Analyze!'),
+                      child: Text(_currentStep < 2
+                          ? 'Confirm ✓'
+                          : 'Analyze!'),
                     ),
                   ),
                 ],

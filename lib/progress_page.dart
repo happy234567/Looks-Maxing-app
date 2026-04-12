@@ -513,8 +513,9 @@ class _ProgressPageState extends State<ProgressPage>
           ]),
           const SizedBox(height: 18),
           SizedBox(
-            height: 140,
-            child: Row(
+            height: 150,
+            child: ClipRect(
+             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: data.asMap().entries.map((e) {
                 final score = e.value.scores['overall'] as int? ?? 0;
@@ -557,6 +558,7 @@ class _ProgressPageState extends State<ProgressPage>
                 );
               }).toList(),
             ),
+           ),
           ),
           const SizedBox(height: 10),
           Row(
@@ -699,31 +701,39 @@ class _ProgressPageState extends State<ProgressPage>
         ),
         child: Row(
           children: [
-            // Photo thumbnail
+            // Photo thumbnail — only cloud URLs survive reinstall/sign-out
             ClipRRect(
-  borderRadius: BorderRadius.circular(12),
-  child: scan.imagePath != null && scan.imagePath!.startsWith('http')
-      ? CachedNetworkImage(
-          imageUrl: scan.imagePath!,
-          width: 56, height: 56, fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-              width: 56, height: 56,
-              color: const Color(0xFF1E1E1E),
-              child: const Center(child: SizedBox(width: 20, height: 20,
-                  child: CircularProgressIndicator(color: Color(0xFFFFD700), strokeWidth: 2)))),
-          errorWidget: (context, url, error) => Container(
-              width: 56, height: 56,
-              color: const Color(0xFF1E1E1E),
-              child: const Icon(Icons.face, color: Colors.white24, size: 26)),
-        )
-      : Container(
-          width: 56, height: 56,
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.face, color: Colors.white24, size: 26)),
-),
+              borderRadius: BorderRadius.circular(12),
+              child: scan.imagePath != null &&
+                      scan.imagePath!.startsWith('http')
+                  ? CachedNetworkImage(
+                      imageUrl: scan.imagePath!,
+                      width: 56, height: 56, fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                          width: 56, height: 56,
+                          color: const Color(0xFF1E1E1E),
+                          child: const Center(
+                              child: SizedBox(
+                                  width: 20, height: 20,
+                                  child: CircularProgressIndicator(
+                                      color: Color(0xFFFFD700),
+                                      strokeWidth: 2)))),
+                      errorWidget: (context, url, error) => Container(
+                          width: 56, height: 56,
+                          color: const Color(0xFF1E1E1E),
+                          child: const Icon(Icons.face,
+                              color: Colors.white24, size: 26)),
+                    )
+                  : Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.face,
+                          color: Colors.white24, size: 26)),
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(

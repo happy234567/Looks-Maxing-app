@@ -143,6 +143,17 @@ class _SplashScreenState extends State<SplashScreen> {
       await AdService().initialize().timeout(const Duration(seconds: 5));
     } catch (_) {}
 
+    // Show app open ad after 2s delay so the ad has time to preload.
+    // Only once per session, only for free users.
+    Future.delayed(const Duration(seconds: 2), () async {
+      try {
+        final billing = BillingService();
+        if (!billing.isPremium) {
+          await AdService().showAppOpenAdIfReady();
+        }
+      } catch (_) {}
+    });
+
     final user = FirebaseAuth.instance.currentUser;
     Widget initialScreen = const LoginScreen();
 
@@ -321,7 +332,8 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
 
   // Countdown timer state
   Duration _remaining = Duration.zero;
-  bool _canScan = true;
+  bool _canScan = false; // start false — set correctly after _refreshCooldown
+  bool _cooldownLoaded = false; // prevents button showing before first check
   double _cooldownProgress = 1.0;
 
   @override
@@ -354,6 +366,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
         _remaining = remaining;
         _canScan = remaining == Duration.zero;
         _cooldownProgress = progress;
+        _cooldownLoaded = true; // now safe to show button
       });
     }
   }
@@ -695,7 +708,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _canScan
+                  onPressed: (_canScan && _cooldownLoaded)
                       ? () async {
                           await Navigator.push(
                               context,
