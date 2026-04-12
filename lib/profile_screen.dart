@@ -367,23 +367,6 @@ class _ProfilePageState extends State<ProfilePage> {
     catch (_) { await launchUrl(web, mode: LaunchMode.externalApplication); }
   }
 
-  // TODO: TEMP - Remove before release
-  Future<void> _sendTestNotification() async {
-    await NotificationService.showPremiumNotification(
-      title: '🚀 Level Max is working!',
-      body: 'Your notification system is live and looking 🔥. Scan your face to unlock your true potential today.',
-      payload: 'test_notification',
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Test notification fired! Check your status bar 👆'),
-        backgroundColor: Color(0xFF1A1A1A),
-        duration: Duration(seconds: 3),
-      ),
-    );
-  }
-
   Future<void> _signOut() async {
     final confirm = await showDialog<bool>(context: context, builder: (_) => AlertDialog(
       backgroundColor: const Color(0xFF1A1A1A),
@@ -550,9 +533,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
             const SizedBox(height: 28),
             const Text('ACCOUNT ACTIONS', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
-            const SizedBox(height: 10),
-            // TODO: TEMP - Remove before release
-            _actionBtn(Icons.notifications_active_outlined, '🔔 Test Notification', const Color(0xFF64FFDA), _sendTestNotification),
             const SizedBox(height: 10),
             _actionBtn(Icons.logout_rounded, 'Sign Out', const Color(0xFFFFD700), _signOut),
             const SizedBox(height: 10),
