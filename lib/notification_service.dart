@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:typed_data';
 
 // This runs in the background even when app is closed
 @pragma('vm:entry-point')
@@ -73,30 +74,42 @@ class NotificationService {
     });
   }
 
-  /// Shows a DuoLingo-style premium looking notification
+  /// Shows a premium notification with the app logo
   static Future<void> showPremiumNotification({
     required String title,
     required String body,
     String? payload,
   }) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'high_importance_channel',
       'High Importance Notifications',
       channelDescription: 'Used for critical app alerts and scan results.',
       importance: Importance.max,
       priority: Priority.high,
-      ticker: 'ticker',
+      ticker: 'Level Max',
+      // Small icon in status bar + top-left of notification (white monochrome, tinted gold)
       icon: '@drawable/ic_stat_notification',
-      largeIcon: null,
-      styleInformation: BigTextStyleInformation(''),
-      color: Color(0xFFFFD700), // Gold theme color (tints the monochrome icon)
+      styleInformation: BigTextStyleInformation(
+        body,
+        contentTitle: '<b>$title</b>',
+        htmlFormatContentTitle: true,
+        htmlFormatBigText: true,
+        summaryText: 'Level Max',
+      ),
+      // Gold tint applied to the small monochrome icon in the status bar
+      color: const Color(0xFFFFD700),
       enableLights: true,
-      ledColor: Color(0xFFFFD700),
-      ledOnMs: 1000,
-      ledOffMs: 500,
+      ledColor: const Color(0xFFFFD700),
+      ledOnMs: 800,
+      ledOffMs: 400,
+      playSound: true,
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList([0, 200, 100, 200]),
+      channelShowBadge: true,
+      autoCancel: true,
     );
 
-    const NotificationDetails details = NotificationDetails(android: androidDetails);
+    final NotificationDetails details = NotificationDetails(android: androidDetails);
 
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch.hashCode,
