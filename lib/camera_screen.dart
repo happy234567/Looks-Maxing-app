@@ -12,6 +12,8 @@ import 'dart:async';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'ad_service.dart';
+
 /// Strips the "Exception: " prefix from error messages for cleaner UX.
 String _cleanErrorMessage(dynamic error) {
   String msg = error.toString();
@@ -365,6 +367,7 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
         // Save scan history (non-fatal if it fails)
+        // Save scan history (non-fatal if it fails)
         try {
           await ScanHistory.saveScan(scores, processedFront, imagePaths: finalImagePaths);
         } catch (e) {
@@ -372,12 +375,26 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
         if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImagePaths),
-          ),
-        );
+
+        // Show ad for free users, then navigate to results
+        final billing = BillingService();
+        await billing.initialize();
+
+        void goToResults() {
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImagePaths),
+            ),
+          );
+        }
+
+        if (billing.isPremium) {
+          goToResults();
+        } else {
+          await AdService().showScanAd(onComplete: goToResults);
+        }
       } else {
         final errorMsg = data['error'];
         if (errorMsg is String && errorMsg.contains('limit')) {

@@ -74,6 +74,11 @@
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false"/>
 
+        <!-- AdMob App ID (TEST ID - replace with your real ID before release) -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-1840880800077412~2473190094"/>
+
     </application>
 
     <queries>

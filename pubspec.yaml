@@ -35,6 +35,7 @@ dependencies:
   flutter_windowmanager:
     path: local_plugins/flutter_windowmanager
   screen_capture_event: ^1.2.0
+  google_mobile_ads: ^5.1.0
 
 
 dev_dependencies:

@@ -21,6 +21,7 @@ import 'dart:ui';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'ad_service.dart';
 
 void main() {
   runZonedGuarded(() async {
@@ -136,6 +137,10 @@ class _SplashScreenState extends State<SplashScreen> {
 
     try {
       await BillingService().initialize().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+
+    try {
+      await AdService().initialize().timeout(const Duration(seconds: 5));
     } catch (_) {}
 
     final user = FirebaseAuth.instance.currentUser;
