@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// Strips the "Exception: " prefix from error messages for cleaner UX.
 String _cleanErrorMessage(dynamic error) {
@@ -327,33 +328,46 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
         // Process and save images (wrapped so failures here won't lose the scan)
-        List<String> finalImageUrls = [];
-        String? processedFrontUrl;
+        List<String> finalImagePaths = [];
+        String? processedFront;
         try {
           final timestamp = DateTime.now().millisecondsSinceEpoch;
           final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
 
-          Future<String?> uploadImage(File? file, String type) async {
+          Future<String?> processImage(File? file, String type) async {
             if (file == null || !file.existsSync()) return null;
             try {
+              // First try to safely upload to Firebase Storage
               final storageRef = FirebaseStorage.instance.ref().child('users/$userId/scans/${timestamp}_$type.jpg');
-              await storageRef.putFile(file).timeout(const Duration(seconds: 30));
+              await storageRef.putFile(file).timeout(const Duration(seconds: 20));
               return await storageRef.getDownloadURL();
             } catch (e) {
               debugPrint('⚠️ Firebase Storage upload failed ($type): $e');
-              // No local fallback — only network URLs are stored
-              return null;
+              // If Firebase Storage isn't enabled or rules deny access,
+              // reliably fallback to local persistent storage so it doesn't break
+              try {
+                final appDir = await getApplicationDocumentsDirectory();
+                final backupDir = Directory('${appDir.path}/scans');
+                if (!await backupDir.exists()) {
+                  await backupDir.create(recursive: true);
+                }
+                final savedFallback = await file.copy('${backupDir.path}/${timestamp}_$type.jpg');
+                return savedFallback.path;
+              } catch (localError) {
+                debugPrint('Local fallback also failed: $localError');
+                return null;
+              }
             }
           }
 
-          processedFrontUrl = await uploadImage(_frontImage, 'front');
-          final String? processedRightUrl = await uploadImage(_rightImage, 'right');
-          final String? processedLeftUrl = await uploadImage(_leftImage, 'left');
+          processedFront = await processImage(_frontImage, 'front');
+          final String? processedRight = await processImage(_rightImage, 'right');
+          final String? processedLeft = await processImage(_leftImage, 'left');
 
-          finalImageUrls = [
-            ?processedFrontUrl,
-            ?processedRightUrl,
-            ?processedLeftUrl,
+          finalImagePaths = [
+            ?processedFront,
+            ?processedRight,
+            ?processedLeft,
           ];
         } catch (e) {
           debugPrint('Image processing error (non-fatal): $e');
@@ -362,7 +376,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
         // Save scan history (non-fatal if it fails)
         try {
-          await ScanHistory.saveScan(scores, processedFrontUrl, imageUrls: finalImageUrls);
+          await ScanHistory.saveScan(scores, processedFront, imagePaths: finalImagePaths);
         } catch (e) {
           debugPrint('Failed to save scan history: $e');
         }
@@ -371,7 +385,7 @@ class _CameraScreenState extends State<CameraScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImageUrls),
+            builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImagePaths),
           ),
         );
       } else {
