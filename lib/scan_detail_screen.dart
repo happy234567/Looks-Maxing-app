@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -67,7 +66,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> with SingleTickerPr
     final overall = sc['overall'] as int? ?? 0;
     final gl = _gender == 'Female' ? 'Femininity' : 'Masculinity';
     final sColor = _scoreColor(overall);
-    final photos = widget.scan.imagePaths.where((p) => p.startsWith('http') || File(p).existsSync()).toList();
+    final photos = widget.scan.displayImages;
 
     final items = [
       ('Skin Quality', sc['skin'] as int? ?? 0, Icons.auto_awesome),
@@ -250,8 +249,10 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> with SingleTickerPr
                 photos[i].startsWith('http')
                     ? CachedNetworkImage(imageUrl: photos[i], fit: BoxFit.cover,
                         placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Color(0xFFFFD700))),
-                        errorWidget: (context, url, error) => const Center(child: Icon(Icons.error, color: Colors.white54, size: 40)))
-                    : Image.file(File(photos[i]), fit: BoxFit.cover),
+                        errorWidget: (context, url, error) => const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 40)))
+                    : CachedNetworkImage(imageUrl: photos[i], fit: BoxFit.cover,
+                        placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Color(0xFFFFD700))),
+                        errorWidget: (context, url, error) => const Center(child: Icon(Icons.broken_image, color: Colors.white54, size: 40))),
                 Positioned(bottom: 0, left: 0, right: 0, height: 60,
                   child: Container(decoration: BoxDecoration(gradient: LinearGradient(
                     colors: [Colors.transparent, Colors.black.withValues(alpha:0.55)],
@@ -335,11 +336,9 @@ class _FsViewerState extends State<_FsViewer> {
         PageView.builder(controller: _c, itemCount: widget.photos.length,
           onPageChanged: (i) => setState(() => _cur = i),
           itemBuilder: (_, i) => InteractiveViewer(minScale: 0.8, maxScale: 4.0,
-            child: Center(child: widget.photos[i].startsWith('http')
-              ? CachedNetworkImage(imageUrl: widget.photos[i], fit: BoxFit.contain,
+            child: Center(child: CachedNetworkImage(imageUrl: widget.photos[i], fit: BoxFit.contain,
                   placeholder: (context, url) => const CircularProgressIndicator(color: Color(0xFFFFD700)),
-                  errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.white54, size: 40))
-              : Image.file(File(widget.photos[i]), fit: BoxFit.contain)))),
+                  errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.white54, size: 40))))),
         if (widget.photos.length > 1) Positioned(bottom: 20, left: 0, right: 0,
           child: Row(mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(widget.photos.length, (i) => AnimatedContainer(

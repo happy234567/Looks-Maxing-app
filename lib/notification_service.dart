@@ -20,7 +20,8 @@ class NotificationService {
   // Call this once when the app starts
   static Future<void> initialize() async {
     // 1. Android/iOS local notification settings
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
+    // Small icon MUST be monochrome (Android enforces this on API 21+)
+    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@drawable/ic_stat_notification');
     
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -87,8 +88,10 @@ class NotificationService {
       importance: Importance.max,
       priority: Priority.high,
       ticker: 'Level Max',
-      // Small icon in status bar + top-left of notification (white monochrome, tinted gold)
-      icon: '@mipmap/launcher_icon',
+      // Small icon: monochrome silhouette (Android REQUIRES alpha-only for status bar)
+      icon: '@drawable/ic_stat_notification',
+      // Large icon: full-color app logo (circular on modern Android, high visibility)
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
       styleInformation: BigTextStyleInformation(
         body,
         contentTitle: '<b>$title</b>',

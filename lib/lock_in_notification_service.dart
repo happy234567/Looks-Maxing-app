@@ -31,7 +31,7 @@ class LockInNotificationService {
     tzdata.initializeTimeZones();
 
     // Android setup
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher_foreground');
+    const androidInit = AndroidInitializationSettings('@drawable/ic_stat_notification');
     const initSettings = InitializationSettings(android: androidInit);
 
     await _plugin.initialize(

@@ -5,6 +5,12 @@ class ScanHistory {
   final String id;
   final DateTime date;
   final Map<String, dynamic> scores;
+  /// Primary image URL (Firebase Storage download URL). Never a local path.
+  final String? imageUrl;
+  /// All image URLs (Firebase Storage download URLs). Never local paths.
+  final List<String> imageUrls;
+
+  // Legacy fields kept for backward-compat parsing only
   final String? imagePath;
   final List<String> imagePaths;
 
@@ -12,46 +18,91 @@ class ScanHistory {
     required this.id,
     required this.date,
     required this.scores,
+    this.imageUrl,
+    List<String>? imageUrls,
     this.imagePath,
     List<String>? imagePaths,
-  }) : imagePaths = imagePaths ?? (imagePath != null ? [imagePath] : []);
+  })  : imageUrls = imageUrls ?? [],
+        imagePaths = imagePaths ?? [];
+
+  /// The best available primary image source (prefers URL over legacy path).
+  String? get displayImage {
+    if (imageUrl != null && imageUrl!.isNotEmpty) return imageUrl;
+    if (imagePath != null && imagePath!.startsWith('http')) return imagePath;
+    return null;
+  }
+
+  /// The best available list of images (prefers URLs over legacy paths).
+  List<String> get displayImages {
+    if (imageUrls.isNotEmpty) return imageUrls;
+    // Fall back to legacy imagePaths that are network URLs
+    final networkPaths = imagePaths.where((p) => p.startsWith('http')).toList();
+    if (networkPaths.isNotEmpty) return networkPaths;
+    return [];
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'date': date.toIso8601String(),
     'scores': scores,
-    'imagePath': imagePath,
-    'imagePaths': imagePaths,
+    'imageUrl': imageUrl,
+    'imageUrls': imageUrls,
+    // Keep legacy fields for backward compat
+    'imagePath': imageUrl ?? imagePath,
+    'imagePaths': imageUrls.isNotEmpty ? imageUrls : imagePaths,
   };
 
   factory ScanHistory.fromJson(Map<String, dynamic> json) {
-    final paths = json['imagePaths'] != null
+    // Parse new-style URLs
+    final String? url = json['imageUrl'] as String?;
+    final List<String> urls = json['imageUrls'] != null
+        ? List<String>.from(json['imageUrls'])
+        : <String>[];
+
+    // Parse legacy paths
+    final String? legacyPath = json['imagePath'] as String?;
+    final List<String> legacyPaths = json['imagePaths'] != null
         ? List<String>.from(json['imagePaths'])
-        : (json['imagePath'] != null ? [json['imagePath'] as String] : <String>[]);
+        : (legacyPath != null ? [legacyPath] : <String>[]);
+
     return ScanHistory(
       id: json['id'] ?? '',
       date: DateTime.parse(json['date']),
       scores: Map<String, dynamic>.from(json['scores']),
-      imagePath: json['imagePath'],
-      imagePaths: paths,
+      imageUrl: url ?? (legacyPath != null && legacyPath.startsWith('http') ? legacyPath : null),
+      imageUrls: urls.isNotEmpty
+          ? urls
+          : legacyPaths.where((p) => p.startsWith('http')).toList(),
+      imagePath: legacyPath,
+      imagePaths: legacyPaths,
     );
   }
 
   static String? get _userId =>
       FirebaseAuth.instance.currentUser?.uid;
 
+  /// Save a scan with network image URLs only.
+  /// [imageUrl] should be a Firebase Storage download URL (or null).
+  /// [imageUrls] should all be Firebase Storage download URLs.
   static Future<void> saveScan(
-      Map<String, dynamic> scores, String? imagePath, {List<String>? imagePaths}) async {
+      Map<String, dynamic> scores, String? imageUrl, {List<String>? imageUrls}) async {
     if (_userId == null) return;
 
-    final paths = imagePaths ?? (imagePath != null ? [imagePath] : []);
+    // Filter out any non-network paths that might have leaked in
+    final cleanUrls = (imageUrls ?? [])
+        .where((u) => u.startsWith('http'))
+        .toList();
+    final cleanUrl = (imageUrl != null && imageUrl.startsWith('http')) ? imageUrl : null;
 
     final scan = {
       'id': DateTime.now().millisecondsSinceEpoch.toString(),
       'date': DateTime.now().toIso8601String(),
       'scores': scores,
-      'imagePath': imagePath,
-      'imagePaths': paths,
+      'imageUrl': cleanUrl,
+      'imageUrls': cleanUrls,
+      // Legacy fields for backward compat
+      'imagePath': cleanUrl,
+      'imagePaths': cleanUrls,
     };
 
     await FirebaseFirestore.instance
