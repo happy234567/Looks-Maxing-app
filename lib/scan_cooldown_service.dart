@@ -29,7 +29,7 @@ class ScanCooldownService {
   static Future<void> initialize() async {
     tzdata.initializeTimeZones();
 
-    const androidInit = AndroidInitializationSettings('@drawable/ic_stat_notification');
+    const androidInit = AndroidInitializationSettings('@mipmap/launcher_icon');
     const initSettings = InitializationSettings(android: androidInit);
 
     await _plugin.initialize(

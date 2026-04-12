@@ -759,6 +759,30 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
           ),
         ),
       ),
+      // ──────────────────────────────────────────────────────────────
+      // 🔔 TEMPORARY: Test notification button — REMOVE AFTER TESTING
+      // ──────────────────────────────────────────────────────────────
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          NotificationService.showPremiumNotification(
+            title: 'Level Max Up! 🚀',
+            body: 'Your face scan is ready. You scored higher than 87% of users — tap to see your full breakdown!',
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Notification fired! Check your notification panel ↑',
+                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              backgroundColor: Color(0xFFFFD700),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        },
+        backgroundColor: const Color(0xFFFFD700),
+        icon: const Icon(Icons.notifications_active, color: Colors.black),
+        label: const Text('Test Notification', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+      ),
+      // ──────────────────────────────────────────────────────────────
+      
       bottomSheet: !_billingService.isPremium
           ? GestureDetector(
               onTap: _showPremiumBottomSheet,

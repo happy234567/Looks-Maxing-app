@@ -46,7 +46,7 @@
         <!-- Default FCM notification icon (monochrome/transparent) -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/ic_stat_notification" />
+            android:resource="@mipmap/launcher_icon" />
 
         <!-- Firebase Cloud Messaging -->
         <service
