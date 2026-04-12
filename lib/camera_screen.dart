@@ -335,10 +335,10 @@ class _CameraScreenState extends State<CameraScreen> {
           Future<String?> processImage(File? file, String type) async {
   if (file == null || !file.existsSync()) return null;
   try {
-    final storageRef = FirebaseStorage.instance
-        .ref()
-        .child('users/$userId/scans/${timestamp}_$type.jpg');
-    await storageRef.putFile(file).timeout(const Duration(seconds: 30));
+    final storageRef = FirebaseStorage.instanceFor(
+        bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app')
+    .ref()
+    .child('users/$userId/scans/${timestamp}_$type.jpg');
     final url = await storageRef.getDownloadURL();
     debugPrint('✅ Uploaded $type image: $url');
     return url;
