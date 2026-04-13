@@ -12,10 +12,10 @@ class AdService {
 
   // ── Ad Unit IDs ────────────────────────────────────────────────────────────
   // TEST ID for REWARDED AD (Forces 20-30 sec video)
-  static const String _rewardedAdUnitId = 'ca-app-pub-3940256099942544/5224354917'; 
+  static const String _rewardedAdUnitId = 'ca-app-pub-1840880800077412/2124414737'; 
   
   // TEST ID for App Open Ad
-  static const String _appOpenAdUnitId  = 'ca-app-pub-3940256099942544/9257395921'; 
+  static const String _appOpenAdUnitId  = 'ca-app-pub-1840880800077412/6573352674'; 
 
   // ── Config ─────────────────────────────────────────────────────────────────
   static const int _maxAdsPerDay   = 5;
