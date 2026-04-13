@@ -256,24 +256,46 @@ Return EXACTLY this JSON. No extra text.
       if (leftImg) imageParts.push({ inlineData: { mimeType: leftImg.mimetype, data: toBase64(leftImg.path) } });
 
       let result;
-      try {
-        result = await model.generateContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }]
-        });
-      } catch (geminiError) {
-        console.error('Gemini API error:', geminiError.message || geminiError);
-        // Check for safety / content filter blocks
-        if (geminiError.message && (
-          geminiError.message.includes('SAFETY') ||
-          geminiError.message.includes('blocked') ||
-          geminiError.message.includes('HARM') ||
-          geminiError.message.includes('content filter')
-        )) {
-          filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
-          return res.status(400).json({ success: false, error: 'Could not analyze this image. Please use a clear, well-lit photo of your face.' });
+      let attempt = 0;
+      let maxRetries = 3;
+      let success = false;
+
+      while (attempt < maxRetries && !success) {
+        try {
+          result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }]
+          });
+          success = true; // It worked! Break the loop.
+        } catch (geminiError) {
+          attempt++;
+          console.error(`Gemini API error (Attempt ${attempt}):`, geminiError.message || geminiError);
+          
+          // If it's a 503 overload error, wait 3 seconds and try again
+          if (geminiError.message && geminiError.message.includes('503')) {
+            if (attempt < maxRetries) {
+              console.log('Server overloaded. Waiting 3 seconds before retrying...');
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              continue; 
+            }
+          }
+          
+          // Check for safety / content filter blocks
+          if (geminiError.message && (
+            geminiError.message.includes('SAFETY') ||
+            geminiError.message.includes('blocked') ||
+            geminiError.message.includes('HARM') ||
+            geminiError.message.includes('content filter')
+          )) {
+            filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+            return res.status(400).json({ success: false, error: 'Could not analyze this image. Please use a clear, well-lit photo of your face.' });
+          }
+          
+          // If it fails all 3 times, tell the user
+          if (attempt >= maxRetries) {
+            filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+            return res.status(500).json({ success: false, error: 'AI analysis failed due to high demand. Please try again later.' });
+          }
         }
-        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
-        return res.status(500).json({ success: false, error: 'AI analysis failed. Please try again.' });
       }
 
       // Handle empty/blocked response

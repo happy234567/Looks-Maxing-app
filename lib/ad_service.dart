@@ -12,8 +12,8 @@ class AdService {
 
   // ── Ad Unit IDs ────────────────────────────────────────────────────────────
   // TO DO: Replace test IDs with your real AdMob IDs before release
-  static const String _interstitialAdUnitId = 'ca-app-pub-1840880800077412~2473190094'; // test
-  static const String _appOpenAdUnitId      = 'ca-app-pub-1840880800077412~2473190094'; // test
+  static const String _interstitialAdUnitId = 'ca-app-pub-1840880800077412/3722781871'; // test
+  static const String _appOpenAdUnitId      = 'ca-app-pub-1840880800077412/6573352674'; // test
   // Real IDs look like: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX'
 
   // ── Config ─────────────────────────────────────────────────────────────────

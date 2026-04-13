@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'ad_service.dart';
 
 /// Strips the "Exception: " prefix from error messages for cleaner UX.
 String _cleanErrorMessage(dynamic error) {
@@ -373,12 +374,32 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
         if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImagePaths),
-          ),
-        );
+        
+        // --- AD LOGIC STARTS HERE ---
+        if (!BillingService().isPremium) {
+          // Free user: We leave _isAnalyzing = true so the loading spinner 
+          // stays on screen while the ad prepares and plays!
+          
+          await AdService().showScanAd(onComplete: () {
+            if (!mounted) return;
+            // Go to results after the ad finishes
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImagePaths),
+              ),
+            );
+          });
+        } else {
+          // Premium user: Skip the ad and go straight to results
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImagePaths),
+            ),
+          );
+        }
+        // --- AD LOGIC ENDS HERE ---
       } else {
         final errorMsg = data['error'];
         if (errorMsg is String && errorMsg.contains('limit')) {
