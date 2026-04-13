@@ -44,7 +44,9 @@ class _CameraScreenState extends State<CameraScreen> {
   File? _rightImage;
   File? _leftImage;
   int _currentStep = 0;
+  
   bool _isAnalyzing = false;
+  String? _errorMessage; // Handles the Try Again screen
 
   final List<Map<String, String>> _steps = [
     {
@@ -114,14 +116,12 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// Gets a fresh Firebase ID token, re-authenticating if necessary.
   Future<String> _getFreshIdToken() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       throw Exception('You are not signed in. Please sign in and try again.');
     }
 
-    // Try force-refreshing the existing token first
     try {
       final token = await user.getIdToken(true);
       if (token != null && token.isNotEmpty) return token;
@@ -129,7 +129,6 @@ class _CameraScreenState extends State<CameraScreen> {
       debugPrint('getIdToken(true) failed: $e');
     }
 
-    // If force-refresh failed, try silent re-sign-in to get a brand new session
     debugPrint('Force-refresh failed, attempting silent re-sign-in...');
     try {
       final googleUser = await GoogleSignIn().signInSilently();
@@ -150,12 +149,9 @@ class _CameraScreenState extends State<CameraScreen> {
     throw Exception('Authentication failed. Please sign out and sign in again.');
   }
 
-  /// Sends the scan request to the backend with the given [idToken].
-  /// Returns the parsed response or throws.
   Future<Map<String, dynamic>> _sendScanRequest(String idToken) async {
     const String backendUrl = 'https://level-maxing-backend.onrender.com/analyze';
 
-    // Build a fresh MultipartRequest each call (requests are single-use)
     http.MultipartRequest buildRequest() {
       var request = http.MultipartRequest('POST', Uri.parse(backendUrl));
       request.headers['Authorization'] = 'Bearer $idToken';
@@ -180,7 +176,6 @@ class _CameraScreenState extends State<CameraScreen> {
           contentType: MediaType('image', 'jpeg')));
     }
 
-    // 180s timeout — Render free-tier cold starts can take 1-2 minutes
     http.StreamedResponse response;
     try {
       response = await request.send().timeout(
@@ -197,13 +192,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
     var responseBody = await response.stream.bytesToString();
 
-    // Handle HTTP-level auth errors before parsing JSON
     if (response.statusCode == 401 || response.statusCode == 403) {
       throw _AuthException('Token rejected by server (HTTP ${response.statusCode})');
     }
 
     if (response.statusCode == 429) {
-      // Parse the error message from the body if possible
       try {
         final body = jsonDecode(responseBody) as Map<String, dynamic>;
         throw Exception(body['error'] ?? 'Upload limit reached. Please try again later.');
@@ -214,7 +207,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     if (response.statusCode == 500) {
-      // Try to extract meaningful error from server response
       try {
         final body = jsonDecode(responseBody) as Map<String, dynamic>;
         final serverError = body['error'] as String? ?? '';
@@ -249,7 +241,6 @@ class _CameraScreenState extends State<CameraScreen> {
       return;
     }
 
-    // Verify the front image file actually exists on disk
     if (!_frontImage!.existsSync()) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -260,10 +251,12 @@ class _CameraScreenState extends State<CameraScreen> {
       return;
     }
 
-    setState(() => _isAnalyzing = true);
+    setState(() {
+      _isAnalyzing = true;
+      _errorMessage = null;
+    });
 
     try {
-      // Get a fresh token
       String idToken;
       try {
         idToken = await _getFreshIdToken();
@@ -275,7 +268,6 @@ class _CameraScreenState extends State<CameraScreen> {
       try {
         data = await _sendScanRequest(idToken);
       } on _AuthException {
-        // Token was rejected — re-authenticate and retry once
         debugPrint('Token rejected, re-authenticating and retrying...');
         try {
           final googleUser = await GoogleSignIn().signInSilently();
@@ -306,28 +298,23 @@ class _CameraScreenState extends State<CameraScreen> {
       if (!mounted) return;
 
       if (data['success'] == true) {
-        // Validate scores exist and have the expected shape
         final scores = data['scores'];
         if (scores == null || scores is! Map<String, dynamic>) {
           throw Exception('Server returned incomplete results. Please try again.');
         }
 
-        // Validate at least the overall score is present
         if (scores['overall'] == null && scores['skin'] == null) {
           throw Exception('Analysis produced no scores. Please ensure your face is clearly visible.');
         }
 
-        // Record the scan cooldown
         try {
           final billing = BillingService();
           await billing.initialize();
           await ScanCooldownService.recordScan(isPremium: billing.isPremium);
         } catch (e) {
           debugPrint('Failed to record scan cooldown: $e');
-          // Non-fatal: don't block the user from seeing results
         }
 
-        // Process and save images (wrapped so failures here won't lose the scan)
         List<String> finalImagePaths = [];
         String? processedFront;
         try {
@@ -344,7 +331,6 @@ class _CameraScreenState extends State<CameraScreen> {
                   .child('users/$userId/scans/${timestamp}_$type.jpg');
               await storageRef.putFile(file).timeout(const Duration(seconds: 60));
               final url = await storageRef.getDownloadURL();
-              debugPrint('[Storage] Upload success ($type): $url');
               return url;
             } catch (e) {
               debugPrint('[Storage] UPLOAD FAILED ($type): $e');
@@ -363,10 +349,8 @@ class _CameraScreenState extends State<CameraScreen> {
           ];
         } catch (e) {
           debugPrint('Image processing error (non-fatal): $e');
-          // Still show results even if image saving failed
         }
 
-        // Save scan history (non-fatal if it fails)
         try {
           await ScanHistory.saveScan(scores, processedFront, imagePaths: finalImagePaths);
         } catch (e) {
@@ -374,15 +358,11 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
         if (!mounted) return;
-        
-        // --- AD LOGIC STARTS HERE ---
+
+        // AD LOGIC
         if (!BillingService().isPremium) {
-          // Free user: We leave _isAnalyzing = true so the loading spinner 
-          // stays on screen while the ad prepares and plays!
-          
           await AdService().showScanAd(onComplete: () {
             if (!mounted) return;
-            // Go to results after the ad finishes
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -391,7 +371,6 @@ class _CameraScreenState extends State<CameraScreen> {
             );
           });
         } else {
-          // Premium user: Skip the ad and go straight to results
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -399,7 +378,6 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           );
         }
-        // --- AD LOGIC ENDS HERE ---
       } else {
         final errorMsg = data['error'];
         if (errorMsg is String && errorMsg.contains('limit')) {
@@ -409,14 +387,10 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isAnalyzing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_cleanErrorMessage(e)),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      setState(() {
+        _isAnalyzing = false;
+        _errorMessage = _cleanErrorMessage(e);
+      });
     }
   }
 
@@ -439,22 +413,67 @@ class _CameraScreenState extends State<CameraScreen> {
     final step = _steps[_currentStep];
     final isRequired = step['required'] == 'true';
 
-    if (_isAnalyzing) {
+    // Shows either the loading spinner OR the Try Again error screen
+    if (_isAnalyzing || _errorMessage != null) {
       return Scaffold(
         backgroundColor: const Color(0xFF0A0A0A),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(color: Color(0xFFFFD700)),
-              const SizedBox(height: 24),
-              const Text('Analyzing your face...',
-                  style: TextStyle(color: Colors.white, fontSize: 18)),
-              const SizedBox(height: 8),
-              const Text('AI is calculating your scores',
-                  style: TextStyle(color: Colors.white54)),
-            ],
-          ),
+          child: _isAnalyzing
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(color: Color(0xFFFFD700)),
+                    const SizedBox(height: 24),
+                    const Text('Analyzing your face...',
+                        style: TextStyle(color: Colors.white, fontSize: 18)),
+                    const SizedBox(height: 8),
+                    const Text('AI is calculating your scores',
+                        style: TextStyle(color: Colors.white54)),
+                  ],
+                )
+              : Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.redAccent, size: 60),
+                      const SizedBox(height: 16),
+                      const Text('Analysis Failed',
+                          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
+                      Text(_errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70, fontSize: 15)),
+                      const SizedBox(height: 32),
+                      
+                      // The Try Again Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            setState(() => _errorMessage = null);
+                            _analyzePhotos(); // Restarts the analysis instantly!
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Try Again', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFFD700),
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Cancel Button
+                      TextButton(
+                        onPressed: () => setState(() => _errorMessage = null),
+                        child: const Text('Go Back to Photos', style: TextStyle(color: Colors.white54, fontSize: 16)),
+                      ),
+                    ],
+                  ),
+                ),
         ),
       );
     }
@@ -477,8 +496,7 @@ class _CameraScreenState extends State<CameraScreen> {
               children: List.generate(
                   3,
                   (i) => Container(
-                        margin:
-                            const EdgeInsets.symmetric(horizontal: 6),
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
                         width: 60,
                         height: 6,
                         decoration: BoxDecoration(
@@ -492,8 +510,7 @@ class _CameraScreenState extends State<CameraScreen> {
             const SizedBox(height: 16),
 
             Text('Step ${_currentStep + 1} of 3',
-                style:
-                    const TextStyle(color: Colors.white54, fontSize: 14)),
+                style: const TextStyle(color: Colors.white54, fontSize: 14)),
             const SizedBox(height: 4),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -522,8 +539,7 @@ class _CameraScreenState extends State<CameraScreen> {
             const SizedBox(height: 8),
             Text(step['instruction']!,
                 textAlign: TextAlign.center,
-                style:
-                    const TextStyle(color: Colors.white54, fontSize: 14)),
+                style: const TextStyle(color: Colors.white54, fontSize: 14)),
             const SizedBox(height: 20),
 
             // Photo preview
@@ -531,8 +547,7 @@ class _CameraScreenState extends State<CameraScreen> {
               child: _currentImage != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(20),
-                      child:
-                          Image.file(_currentImage!, fit: BoxFit.cover),
+                      child: Image.file(_currentImage!, fit: BoxFit.cover),
                     )
                   : Container(
                       decoration: BoxDecoration(
@@ -549,8 +564,7 @@ class _CameraScreenState extends State<CameraScreen> {
                                 style: const TextStyle(fontSize: 60)),
                             const SizedBox(height: 16),
                             const Text('Take or select a photo',
-                                style:
-                                    TextStyle(color: Colors.white54)),
+                                style: TextStyle(color: Colors.white54)),
                           ],
                         ),
                       ),
@@ -578,7 +592,7 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
               const SizedBox(height: 10),
 
-              // Gallery button (all steps)
+              // Gallery button
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -596,7 +610,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
               ),
 
-              // Skip button (only for optional steps)
+              // Skip button
               if (!isRequired) ...[
                 const SizedBox(height: 10),
                 TextButton(
@@ -615,8 +629,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         side: const BorderSide(color: Colors.white38),
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30)),
                       ),
@@ -630,8 +643,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFFD700),
                         foregroundColor: Colors.black,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30)),
                       ),

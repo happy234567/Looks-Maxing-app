@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'camera_screen.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -136,9 +135,9 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
           const SizedBox(height: 28),
           Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 36),
             child: SizedBox(width: double.infinity, child: ElevatedButton.icon(
-              onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const CameraScreen())),
-              icon: const Icon(Icons.camera_alt, size: 18),
-              label: const Text('Scan Again', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              onPressed: () => Navigator.pop(context), // Safely returns to Home tab
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black,
                 padding: const EdgeInsets.symmetric(vertical: 16),

@@ -11,19 +11,20 @@ class AdService {
   AdService._internal();
 
   // ── Ad Unit IDs ────────────────────────────────────────────────────────────
-  // TO DO: Replace test IDs with your real AdMob IDs before release
-  static const String _interstitialAdUnitId = 'ca-app-pub-1840880800077412/3722781871'; // test
-  static const String _appOpenAdUnitId      = 'ca-app-pub-1840880800077412/6573352674'; // test
-  // Real IDs look like: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX'
+  // TEST ID for REWARDED AD (Forces 20-30 sec video)
+  static const String _rewardedAdUnitId = 'ca-app-pub-3940256099942544/5224354917'; 
+  
+  // TEST ID for App Open Ad
+  static const String _appOpenAdUnitId  = 'ca-app-pub-3940256099942544/9257395921'; 
 
   // ── Config ─────────────────────────────────────────────────────────────────
   static const int _maxAdsPerDay   = 5;
   static const int _appOpenCooldownMinutes = 10;
 
   // ── State ──────────────────────────────────────────────────────────────────
-  InterstitialAd? _interstitialAd;
-  AppOpenAd?      _appOpenAd;
-  bool _isLoadingInterstitial = false;
+  RewardedAd? _rewardedAd;
+  AppOpenAd?  _appOpenAd;
+  bool _isLoadingRewarded = false;
   bool _appOpenShownThisSession = false;
   DateTime? _lastAppOpenShown;
   bool _initialized = false;
@@ -34,7 +35,7 @@ class AdService {
     await MobileAds.instance.initialize();
     _initialized = true;
     debugPrint('[AdService] Initialized');
-    _preloadInterstitial();
+    _preloadRewarded();
     _preloadAppOpen();
   }
 
@@ -75,43 +76,41 @@ class AdService {
     return count < _maxAdsPerDay;
   }
 
-  // ── Interstitial ───────────────────────────────────────────────────────────
-  void _preloadInterstitial() {
-    if (_isLoadingInterstitial) return;
-    _isLoadingInterstitial = true;
-    InterstitialAd.load(
-      adUnitId: _interstitialAdUnitId,
+  // ── Rewarded Ad (20-30 sec forced) ─────────────────────────────────────────
+  void _preloadRewarded() {
+    if (_isLoadingRewarded) return;
+    _isLoadingRewarded = true;
+    RewardedAd.load(
+      adUnitId: _rewardedAdUnitId,
       request: const AdRequest(),
-      adLoadCallback: InterstitialAdLoadCallback(
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
-          _interstitialAd = ad;
-          _isLoadingInterstitial = false;
-          debugPrint('[AdService] Interstitial loaded');
+          _rewardedAd = ad;
+          _isLoadingRewarded = false;
+          debugPrint('[AdService] Rewarded Ad loaded');
         },
         onAdFailedToLoad: (error) {
-          _interstitialAd = null;
-          _isLoadingInterstitial = false;
-          debugPrint('[AdService] Interstitial failed: $error');
+          _rewardedAd = null;
+          _isLoadingRewarded = false;
+          debugPrint('[AdService] Rewarded Ad failed: $error');
         },
       ),
     );
   }
 
-  /// Show interstitial before scan results. Calls [onComplete] when done
-  /// (whether ad showed or not — results always show).
+  /// Show Rewarded Ad before scan results. Calls [onComplete] when done.
   Future<void> showScanAd({required VoidCallback onComplete}) async {
-    // Skip if daily limit reached
     if (!await _canShowAd()) {
       debugPrint('[AdService] Daily ad limit reached, skipping');
       onComplete();
       return;
     }
 
-    final ad = _interstitialAd;
+    final ad = _rewardedAd;
     if (ad == null) {
-      debugPrint('[AdService] No interstitial loaded, skipping');
+      debugPrint('[AdService] No Rewarded Ad loaded, skipping');
       onComplete();
-      _preloadInterstitial(); // load for next time
+      _preloadRewarded(); 
       return;
     }
 
@@ -120,8 +119,8 @@ class AdService {
     void safeComplete() {
       if (!completed) {
         completed = true;
-        _interstitialAd = null;
-        _preloadInterstitial(); // preload next
+        _rewardedAd = null;
+        _preloadRewarded(); 
         onComplete();
       }
     }
@@ -129,27 +128,30 @@ class AdService {
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
-        safeComplete();
+        safeComplete(); // Go to results when they close the ad
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
-        debugPrint('[AdService] Interstitial failed to show: $error');
+        debugPrint('[AdService] Rewarded Ad failed to show: $error');
         safeComplete();
       },
       onAdShowedFullScreenContent: (_) {
         _incrementAdCount();
-        debugPrint('[AdService] Interstitial showing');
+        debugPrint('[AdService] Rewarded Ad showing');
       },
     );
 
-    // Safety timeout — if ad hangs, show results anyway
-    Timer(const Duration(seconds: 35), safeComplete);
+    // Safety timeout — if ad hangs for some reason, show results after 45s anyway
+    Timer(const Duration(seconds: 45), safeComplete);
 
-    await ad.show();
+    await ad.show(onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
+      debugPrint('[AdService] User earned reward! (Watched the full ad)');
+      // The user successfully watched the 30 seconds! 
+    });
   }
 
   // ── App Open Ad ────────────────────────────────────────────────────────────
-  void _preloadAppOpen() {
+ void _preloadAppOpen() {
     AppOpenAd.load(
       adUnitId: _appOpenAdUnitId,
       request: const AdRequest(),
@@ -166,13 +168,9 @@ class AdService {
     );
   }
 
-  /// Call this when app comes to foreground.
-  /// Shows app open ad max once per session + 10 min cooldown.
   Future<void> showAppOpenAdIfReady() async {
-    // Only once per session
     if (_appOpenShownThisSession) return;
 
-    // 10 min cooldown
     if (_lastAppOpenShown != null) {
       final diff = DateTime.now().difference(_lastAppOpenShown!).inMinutes;
       if (diff < _appOpenCooldownMinutes) return;
