@@ -35,3 +35,10 @@
 # Gson / JSON (used by http package)
 -keepattributes Signature
 -keep class sun.misc.Unsafe { *; }
+
+# Google Play Core / Split Compat (Fixes R8 missing class errors for release builds)
+-dontwarn com.google.android.play.core.**
+-keep class com.google.android.play.core.** { *; }
+
+# Keep Flutter's PlayStoreDeferredComponentManager references intact
+-keep class io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager { *; }
