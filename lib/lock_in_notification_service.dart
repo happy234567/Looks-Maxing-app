@@ -41,10 +41,10 @@ class LockInNotificationService {
 
     // Create notification channel (required on Android 8+)
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'lock_in_channel',
+      'lock_in_channel_v2',
       'Lock In Reminders',
       description: 'Daily reminders to complete your Lock In tasks',
-      importance: Importance.high,
+      importance: Importance.defaultImportance,
       playSound: true,
       enableVibration: true,
     );
@@ -85,32 +85,18 @@ class LockInNotificationService {
     // Cancel leftovers from yesterday
     await cancelAll();
 
-    // ── 7 PM — gentle reminder ────────────────────────────────────────────
-    final sevenPM = DateTime(now.year, now.month, now.day, 19, 0, 0);
-    if (now.isBefore(sevenPM)) {
+    // ── 8 PM — gentle reminder ────────────────────────────────────────────
+    final eightPM = DateTime(now.year, now.month, now.day, 20, 0, 0);
+    if (now.isBefore(eightPM)) {
       await _schedule(
         id: _reminderNotifId,
-        title: '⚡  Day $dayNumber — Tasks Pending',
-        body: 'Complete your tasks to maintain your streak!',
-        bigText: 'You still have tasks left for Day $dayNumber.\n\nComplete them before midnight to keep your streak alive! 🔥',
-        scheduledTime: sevenPM,
+        title: 'Don\'t break your streak ⚡',
+        body: 'You didn\'t complete your Day $dayNumber task. Complete it now to maintain your streak.',
+        bigText: 'You didn\'t complete your Day $dayNumber task. Complete it now to maintain your streak.',
+        scheduledTime: eightPM,
         isDanger: false,
       );
-      debugPrint('Scheduled 7PM reminder for day $dayNumber');
-    }
-
-    // ── 11 PM — danger alert ──────────────────────────────────────────────
-    final elevenPM = DateTime(now.year, now.month, now.day, 23, 0, 0);
-    if (now.isBefore(elevenPM)) {
-      await _schedule(
-        id: _dangerNotifId,
-        title: '🚨  Streak in Danger!',
-        body: 'Only 1 hour left — complete Day $dayNumber now!',
-        bigText: 'Day $dayNumber tasks are still incomplete.\n\nOnly 1 hour left before midnight. Don\'t break your streak now! ⏰',
-        scheduledTime: elevenPM,
-        isDanger: true,
-      );
-      debugPrint('Scheduled 11PM danger alert for day $dayNumber');
+      debugPrint('Scheduled 8PM reminder for day $dayNumber');
     }
 
     await prefs.setString(_kScheduledDay, todayKey);
@@ -141,19 +127,19 @@ class LockInNotificationService {
         : Int64List.fromList([0, 300, 150, 300]);
 
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'lock_in_channel',
+      'lock_in_channel_v2',
       'Lock In Reminders',
       channelDescription: 'Daily reminders to complete your Lock In tasks',
-      importance: Importance.high,
-      priority: Priority.high,
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
       styleInformation: BigTextStyleInformation(
         bigText,
         htmlFormatBigText: false,
         contentTitle: title,
-        summaryText: isDanger ? '🚨 Streak at risk' : '⚡ Task reminder',
+        summaryText: 'Task reminder',
       ),
-      color: isDanger ? const Color(0xFFFF4444) : const Color(0xFFFFD700),
-      ledColor: isDanger ? const Color(0xFFFF4444) : const Color(0xFFFFD700),
+      color: const Color(0xFFFFD700),
+      ledColor: const Color(0xFFFFD700),
       ledOnMs: 1000,
       ledOffMs: 500,
       enableLights: true,
@@ -162,8 +148,6 @@ class LockInNotificationService {
       vibrationPattern: vibration,
       category: AndroidNotificationCategory.reminder,
       largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
-      fullScreenIntent: isDanger,
-      ticker: isDanger ? 'Streak in danger!' : 'Task reminder',
       when: scheduledTime.millisecondsSinceEpoch,
       showWhen: true,
     );

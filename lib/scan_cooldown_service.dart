@@ -222,14 +222,12 @@ class ScanCooldownService {
       playSound: true,
       enableVibration: true,
       vibrationPattern: vibration,
-      styleInformation: BigTextStyleInformation(
-        isPremium
-            ? 'Your 3-day cooldown is over! Open the app, scan your face and check your latest results. 🏆'
-            : 'Your 30-day cooldown is over! Open the app, scan your face and check your latest results. 📸',
-        contentTitle: '📸 Face Scan Available!',
-        summaryText: 'Level Max',
+      styleInformation: const BigTextStyleInformation(
+        'Your cooldown is over. Scan your face now to get your latest face score.',
+        contentTitle: 'Cooldown Complete ✅',
+        summaryText: 'Face Scan',
       ),
-      ticker: 'Face scan available!',
+      ticker: 'Cooldown Complete ✅',
       largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
       when: scheduledTime.millisecondsSinceEpoch,
       showWhen: true,
@@ -237,10 +235,8 @@ class ScanCooldownService {
 
     await _plugin.zonedSchedule(
       _scanReadyNotifId,
-      '📸 Face Scan Available!',
-      isPremium
-          ? 'Your 3-day cooldown is over — scan your face now!'
-          : 'Your 30-day cooldown is over — scan your face now!',
+      'Cooldown Complete ✅',
+      'Your cooldown is over. Scan your face now to get your latest face score.',
       tzScheduled,
       NotificationDetails(android: androidDetails),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,

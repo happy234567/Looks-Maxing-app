@@ -486,13 +486,36 @@ class LockInPage extends StatefulWidget {
 class _LockInPageState extends State<LockInPage> {
   LockInData? _data;
   bool _loading = true;
+  final BillingService _billing = BillingService();
 
   @override
-  void initState() { super.initState(); _loadData(); }
+  void initState() {
+    super.initState();
+    _loadData();
+    _billing.addListener(_checkPremiumStreak);
+  }
+
+  @override
+  void dispose() {
+    _billing.removeListener(_checkPremiumStreak);
+    super.dispose();
+  }
+
+  void _checkPremiumStreak() {
+    if (_data != null && _billing.isLongTermPremium) {
+      if (_data!.premiumStartDate == null) {
+        setState(() {
+          _data!.premiumStartDate = DateTime.now();
+        });
+        _onSave();
+      }
+    }
+  }
 
   Future<void> _loadData() async {
     final d = await _load();
     setState(() { _data = d; _loading = false; });
+    _checkPremiumStreak();
 
     // Schedule today's Lock In notifications if data exists
     if (d != null) {
@@ -1479,83 +1502,88 @@ class _DayScreenState extends State<_DayScreen> {
   void _doSave() async {
     HapticFeedback.mediumImpact();
     widget.onSave(_log);
-    // Cancel notifications if day is fully complete
-    if (_rate >= 1.0) {
-      await LockInNotificationService.cancelAll();
-    }
 
-    // ── Giveaway Eligibility Check ──
-    final pDay = widget.lockInData.calculatePremiumDay();
-    final completedP = widget.lockInData.calculateCompletedPremiumDays();
-    final totalPastP = pDay > 0 ? pDay - 1 : 0;
-    final pRate = widget.lockInData.calculatePercentage(completedP, totalPastP);
+    try {
+      // Cancel notifications if day is fully complete
+      if (_rate >= 1.0) {
+        await LockInNotificationService.cancelAll();
+      }
 
-    // Only run this check if they just saved Premium Day 150 (or later) and completed it.
-    final billingCheck = BillingService();
-    if (pDay >= 150 && pRate >= 0.8 && billingCheck.isLongTermPremium) {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      final email = FirebaseAuth.instance.currentUser?.email;
+      // ── Giveaway Eligibility Check ──
+      final pDay = widget.lockInData.calculatePremiumDay();
+      final completedP = widget.lockInData.calculateCompletedPremiumDays();
+      final totalPastP = pDay > 0 ? pDay - 1 : 0;
+      final pRate = widget.lockInData.calculatePercentage(completedP, totalPastP);
 
-      if (uid != null) {
-        // We write to the giveaway_entries collection right here.
-        try {
-          // Add a document (or set it so they only enter once)
-          await FirebaseFirestore.instance
-              .collection('giveaway_entries')
-              .doc(uid)
-              .set({
-            'uid': uid,
-            'email': email ?? 'No Email',
-            'timestamp': FieldValue.serverTimestamp(),
-            'completionRate': pRate,
-            'premiumDaysCompleted': pDay,
-            'isPremium': true,
-          }, SetOptions(merge: true));
+      // Only run this check if they just saved Premium Day 150 (or later) and completed it.
+      final billingCheck = BillingService();
+      if (pDay >= 150 && pRate >= 0.8 && billingCheck.isLongTermPremium) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        final email = FirebaseAuth.instance.currentUser?.email;
 
-          // In-App Notification using a beautiful popup
-          if (mounted) {
-            showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                backgroundColor: const Color(0xFF1A1A1A),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: const BorderSide(color: Color(0xFFFFD700), width: 2)),
-                title: const Row(
-                  children: [
-                    Text('🎉 ', style: TextStyle(fontSize: 24)),
-                    Expanded(
-                      child: Text('Giveaway Entry!',
+        if (uid != null) {
+          // We write to the giveaway_entries collection right here.
+          try {
+            // Add a document (or set it so they only enter once)
+            await FirebaseFirestore.instance
+                .collection('giveaway_entries')
+                .doc(uid)
+                .set({
+              'uid': uid,
+              'email': email ?? 'No Email',
+              'timestamp': FieldValue.serverTimestamp(),
+              'completionRate': pRate,
+              'premiumDaysCompleted': pDay,
+              'isPremium': true,
+            }, SetOptions(merge: true));
+
+            // In-App Notification using a beautiful popup
+            if (mounted) {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF1A1A1A),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: const BorderSide(color: Color(0xFFFFD700), width: 2)),
+                  title: const Row(
+                    children: [
+                      Text('🎉 ', style: TextStyle(fontSize: 24)),
+                      Expanded(
+                        child: Text('Giveaway Entry!',
+                            style: TextStyle(
+                                color: Color(0xFFFFD700),
+                                fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  content: Text(
+                    'Congratulations! You have completed $pDay days of your Premium Discipline Streak with an excellent success rate.\n\nYou have officially been entered into the giveaway.\n\nWe will contact you at ${email ?? "your registered email"} if you win!',
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.pop(context); // close the day screen
+                      },
+                      child: const Text('Awesome!',
                           style: TextStyle(
                               color: Color(0xFFFFD700),
                               fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
-                content: Text(
-                  'Congratulations! You have completed $pDay days of your Premium Discipline Streak with an excellent success rate.\n\nYou have officially been entered into the giveaway.\n\nWe will contact you at ${email ?? "your registered email"} if you win!',
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      Navigator.pop(context); // close the day screen
-                    },
-                    child: const Text('Awesome!',
-                        style: TextStyle(
-                            color: Color(0xFFFFD700),
-                            fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-            );
-            return; // Stop early so we don't double pop the Navigator
+              );
+              return; // Stop early so we don't double pop the Navigator
+            }
+          } catch (e) {
+            debugPrint('Error entering giveaway: $e');
           }
-        } catch (e) {
-          debugPrint('Error entering giveaway: $e');
         }
       }
+    } catch (e) {
+      debugPrint('Error during background actions in save: $e');
     }
 
     if (mounted) {

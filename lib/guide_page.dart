@@ -226,6 +226,7 @@ class _GuidePageState extends State<GuidePage>
                     ...freeArticles.map((a) => _ArticleCard(
                           article: a,
                           onTap: () => _openArticle(a),
+                          isLocked: false,
                         )),
 
                     const SizedBox(height: 28),
@@ -236,6 +237,7 @@ class _GuidePageState extends State<GuidePage>
                     ...premiumArticles.map((a) => _ArticleCard(
                           article: a,
                           onTap: () => _openArticle(a),
+                          isLocked: !_billingService.isPremium,
                         )),
 
                     const SizedBox(height: 24),
@@ -300,30 +302,31 @@ class _GuidePageState extends State<GuidePage>
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFD700).withValues(alpha:0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                  color: const Color(0xFFFFD700).withValues(alpha:0.4)),
+          if (!_billingService.isPremium)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFD700).withValues(alpha:0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: const Color(0xFFFFD700).withValues(alpha:0.4)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.lock_outline_rounded,
+                      color: Color(0xFFFFD700), size: 12),
+                  SizedBox(width: 4),
+                  Text(
+                    'Locked',
+                    style: TextStyle(
+                        color: Color(0xFFFFD700),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
             ),
-            child: const Row(
-              children: [
-                Icon(Icons.lock_outline_rounded,
-                    color: Color(0xFFFFD700), size: 12),
-                SizedBox(width: 4),
-                Text(
-                  'Locked',
-                  style: TextStyle(
-                      color: Color(0xFFFFD700),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -546,8 +549,13 @@ class _GuidePageState extends State<GuidePage>
 class _ArticleCard extends StatefulWidget {
   final GuideArticle article;
   final VoidCallback onTap;
+  final bool isLocked;
 
-  const _ArticleCard({required this.article, required this.onTap});
+  const _ArticleCard({
+    required this.article,
+    required this.onTap,
+    this.isLocked = false,
+  });
 
   @override
   State<_ArticleCard> createState() => _ArticleCardState();
@@ -689,13 +697,13 @@ class _ArticleCardState extends State<_ArticleCard> {
                     : null,
                 child: Center(
                   child: Icon(
-                    isPremium
+                    widget.isLocked
                         ? Icons.lock_outline_rounded
                         : Icons.chevron_right_rounded,
                     color: isPremium
                         ? const Color(0xFFFFD700)
                         : Colors.white30,
-                    size: isPremium ? 16 : 22,
+                    size: widget.isLocked ? 16 : 22,
                   ),
                 ),
               ),
