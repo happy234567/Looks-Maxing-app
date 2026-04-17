@@ -67,6 +67,7 @@ class BillingService extends ChangeNotifier {
   List<ProductDetails> products = [];
   bool isPremium = false;
   bool isLongTermPremium = false;
+  String? purchasedPlanType; // '6_month' or '12_month' — used by challenge system
 
   // Broadcast the last purchase outcome so UI widgets can react
   PurchaseOutcome lastPurchaseOutcome = PurchaseOutcome.none;
@@ -219,22 +220,31 @@ class BillingService extends ChangeNotifier {
     final isLongTermPlan = purchase.productID == sixMonthId || 
                            purchase.productID == yearlyId;
 
+    // Track specific plan type for challenge system
+    if (purchase.productID == sixMonthId) {
+      purchasedPlanType = '6_month';
+    } else if (purchase.productID == yearlyId) {
+      purchasedPlanType = '12_month';
+    }
+
     notifyListeners();
-    await _updatePremiumInFirebase(true, isLongTermPlan: isLongTermPlan);
+    await _updatePremiumInFirebase(true, isLongTermPlan: isLongTermPlan, planType: purchasedPlanType);
   }
 
-  Future<void> _updatePremiumInFirebase(bool premium, {bool isLongTermPlan = false}) async {
+  Future<void> _updatePremiumInFirebase(bool premium, {bool isLongTermPlan = false, String? planType}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .set({
+      final data = <String, dynamic>{
         'isPremium': premium,
         'isLongTermPremium': isLongTermPlan,
         'premiumUpdated': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      };
+      if (planType != null) data['purchasedPlanType'] = planType;
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(data, SetOptions(merge: true));
     } catch (e) {
       debugPrint('[BillingService] Firebase update error: $e');
     }
@@ -251,6 +261,7 @@ class BillingService extends ChangeNotifier {
       if (doc.exists && doc.data()!['isPremium'] == true) {
         isPremium = true;
         isLongTermPremium = doc.data()!['isLongTermPremium'] == true;
+        purchasedPlanType = doc.data()!['purchasedPlanType'] as String?;
         notifyListeners();
       }
     } catch (e) {

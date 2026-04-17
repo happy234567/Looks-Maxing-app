@@ -6,6 +6,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'lock_in_notification_service.dart';
 import 'billing_service.dart';
+import 'challenge_service.dart';
+import 'challenge_card.dart';
+import 'challenge_result_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -485,6 +488,7 @@ class LockInPage extends StatefulWidget {
 
 class _LockInPageState extends State<LockInPage> {
   LockInData? _data;
+  ChallengeData? _challenge;
   bool _loading = true;
   final BillingService _billing = BillingService();
 
@@ -501,7 +505,7 @@ class _LockInPageState extends State<LockInPage> {
     super.dispose();
   }
 
-  void _checkPremiumStreak() {
+  void _checkPremiumStreak() async {
     if (_data != null && _billing.isLongTermPremium) {
       if (_data!.premiumStartDate == null) {
         setState(() {
@@ -509,13 +513,33 @@ class _LockInPageState extends State<LockInPage> {
         });
         _onSave();
       }
+      // Create challenge if premium user has no active challenge
+      if (_challenge == null) {
+        final planType = _billing.purchasedPlanType ?? '6_month';
+        _challenge = await ChallengeService.createChallenge(planType: planType);
+        if (mounted) setState(() {});
+      }
     }
   }
 
   Future<void> _loadData() async {
     final d = await _load();
-    setState(() { _data = d; _loading = false; });
+    final challenge = await ChallengeService.loadChallenge();
+    setState(() { _data = d; _challenge = challenge; _loading = false; });
     _checkPremiumStreak();
+
+    // Auto-show result screen if challenge completed but not yet notified
+    if (_challenge != null && _challenge!.isCompleted && !_challenge!.resultNotified) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ChallengeService.markResultNotified(_challenge!);
+          LockInNotificationService.showChallengeResult(isEligible: _challenge!.isEligible);
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => ChallengeResultScreen(challenge: _challenge!),
+          ));
+        }
+      });
+    }
 
     // Schedule today's Lock In notifications if data exists
     if (d != null) {
@@ -580,7 +604,11 @@ class _LockInPageState extends State<LockInPage> {
       );
     }
     if (_data == null) return _SetupScreen(onStart: _onStart);
-    return _Dashboard(data: _data!, onSave: _onSave, onReset: _onReset);
+    return _Dashboard(
+      data: _data!, onSave: _onSave, onReset: _onReset,
+      challenge: _challenge,
+      onChallengeUpdate: (c) { setState(() { _challenge = c; }); },
+    );
   }
 }
 
@@ -1093,7 +1121,9 @@ class _SetupScreenState extends State<_SetupScreen> {
 class _Dashboard extends StatefulWidget {
   final LockInData data;
   final VoidCallback onSave, onReset;
-  const _Dashboard({required this.data, required this.onSave, required this.onReset});
+  final ChallengeData? challenge;
+  final void Function(ChallengeData?)? onChallengeUpdate;
+  const _Dashboard({required this.data, required this.onSave, required this.onReset, this.challenge, this.onChallengeUpdate});
   @override
   State<_Dashboard> createState() => _DashboardState();
 }
@@ -1244,8 +1274,11 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
         backgroundColor: const Color(0xFF111111),
         title: const Text('Lock In', style: TextStyle(color: Color(0xFFFFD700))),
         centerTitle: true,
+        
       ),
-      body: Column(children: [
+      body: CustomScrollView(slivers: [
+        SliverToBoxAdapter(
+          child: Column(children: [
         // Stats banner
         Container(
           margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -1270,10 +1303,19 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
           ]),
         ),
 
-        // Premium Discipline Streak Card
-        if (_billing.isLongTermPremium) 
+        // Challenge Card (replaces old premium streak)
+        if (widget.challenge != null)
+          ChallengeCard(
+            challenge: widget.challenge!,
+            onViewResult: () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => ChallengeResultScreen(challenge: widget.challenge!),
+              ));
+            },
+          )
+        else if (_billing.isLongTermPremium)
           _buildPremiumCard(context)
-        else if (data.premiumStartDate != null && !_billing.isLongTermPremium) 
+        else if (data.premiumStartDate != null && !_billing.isLongTermPremium)
           _buildPremiumExpiredCard(context),
 
         // "Set Weekly Tasks" button above day list
@@ -1314,12 +1356,15 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
 
         const SizedBox(height: 4),
 
+          ]),
+        ),
+
         // Day list
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            itemCount: totalVisible,
-            itemBuilder: (context, i) {
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
               final dayNum = i + 1;
               final isToday = dayNum == currentDay;
               final isLocked = dayNum > currentDay;
@@ -1357,6 +1402,11 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
                                 data.days.add(updated);
                               }
                               onSave();
+                            },
+                            challenge: widget.challenge,
+                            onChallengeUpdate: (c) {
+                              setState(() {});
+                              widget.onChallengeUpdate?.call(c);
                             },
                           )));
                       },
@@ -1440,7 +1490,8 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
                 ),
               );
             },
-          ),
+            childCount: totalVisible,
+          )),
         ),
       ]),
     ));
@@ -1460,11 +1511,13 @@ class _DayScreen extends StatefulWidget {
   final DayLog log;
   final bool isToday;
   final void Function(DayLog) onSave;
+  final ChallengeData? challenge;
+  final void Function(ChallengeData?)? onChallengeUpdate;
 
   const _DayScreen({
     required this.dayNumber, required this.dayLabel, required this.config,
     required this.customTasks, required this.lockInData, required this.log, required this.isToday,
-    required this.onSave,
+    required this.onSave, this.challenge, this.onChallengeUpdate,
   });
 
   @override
@@ -1509,81 +1562,30 @@ class _DayScreenState extends State<_DayScreen> {
         await LockInNotificationService.cancelAll();
       }
 
-      // ── Giveaway Eligibility Check ──
-      final pDay = widget.lockInData.calculatePremiumDay();
-      final completedP = widget.lockInData.calculateCompletedPremiumDays();
-      final totalPastP = pDay > 0 ? pDay - 1 : 0;
-      final pRate = widget.lockInData.calculatePercentage(completedP, totalPastP);
+      // ── Challenge System Update ──
+      if (_rate >= 1.0 && widget.challenge != null && widget.challenge!.isActive) {
+        final updated = await ChallengeService.onDayCompleted(widget.challenge!);
+        widget.onChallengeUpdate?.call(updated);
 
-      // Only run this check if they just saved Premium Day 150 (or later) and completed it.
-      final billingCheck = BillingService();
-      if (pDay >= 150 && pRate >= 0.8 && billingCheck.isLongTermPremium) {
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        final email = FirebaseAuth.instance.currentUser?.email;
+        if (updated != null && updated.isCompleted) {
+          await ChallengeService.markResultNotified(updated);
+          await LockInNotificationService.showChallengeResult(isEligible: updated.isEligible);
 
-        if (uid != null) {
-          // We write to the giveaway_entries collection right here.
-          try {
-            // Add a document (or set it so they only enter once)
-            await FirebaseFirestore.instance
-                .collection('giveaway_entries')
-                .doc(uid)
-                .set({
-              'uid': uid,
-              'email': email ?? 'No Email',
-              'timestamp': FieldValue.serverTimestamp(),
-              'completionRate': pRate,
-              'premiumDaysCompleted': pDay,
-              'isPremium': true,
-            }, SetOptions(merge: true));
-
-            // In-App Notification using a beautiful popup
-            if (mounted) {
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: const Color(0xFF1A1A1A),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      side: const BorderSide(color: Color(0xFFFFD700), width: 2)),
-                  title: const Row(
-                    children: [
-                      Text('🎉 ', style: TextStyle(fontSize: 24)),
-                      Expanded(
-                        child: Text('Giveaway Entry!',
-                            style: TextStyle(
-                                color: Color(0xFFFFD700),
-                                fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                  content: Text(
-                    'Congratulations! You have completed $pDay days of your Premium Discipline Streak with an excellent success rate.\n\nYou have officially been entered into the giveaway.\n\nWe will contact you at ${email ?? "your registered email"} if you win!',
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        Navigator.pop(context); // close the day screen
-                      },
-                      child: const Text('Awesome!',
-                          style: TextStyle(
-                              color: Color(0xFFFFD700),
-                              fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-              );
-              return; // Stop early so we don't double pop the Navigator
-            }
-          } catch (e) {
-            debugPrint('Error entering giveaway: $e');
+          if (updated.isEligible) {
+            await ChallengeService.notifyAdminEligible(updated);
           }
+
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => ChallengeResultScreen(challenge: updated)),
+            );
+          }
+          return;
         }
       }
     } catch (e) {
-      debugPrint('Error during background actions in save: $e');
+      debugPrint('Error during challenge update: $e');
     }
 
     if (mounted) {

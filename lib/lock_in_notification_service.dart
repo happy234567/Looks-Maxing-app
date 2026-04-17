@@ -53,6 +53,27 @@ class LockInNotificationService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
+
+    // High-importance channel for challenge results (heads-up display)
+    const AndroidNotificationChannel challengeChannel = AndroidNotificationChannel(
+      'challenge_result_channel',
+      'Challenge Results',
+      description: 'Challenge completion and giveaway notifications',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(challengeChannel);
+
+    // Request notification permission (Android 13+)
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
   }
 
   // Called when user taps a notification
@@ -163,4 +184,52 @@ class LockInNotificationService {
           UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
-}
+
+  // ── Challenge completion result notification ─────────────────────────────
+
+  static Future<void> showChallengeResult({required bool isEligible}) async {
+    debugPrint('[ChallengeNotif] Firing notification: isEligible=$isEligible');
+    final title = isEligible ? '🎉 You Made It!' : 'Almost There 😔';
+    final body = isEligible
+        ? 'You completed the challenge and entered the giveaway! We\'ll notify you if you win.'
+        : 'You needed 80% accuracy. Don\'t give up — start a new challenge!';
+
+    final AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+      'challenge_result_channel',
+      'Challenge Results',
+      channelDescription: 'Challenge completion and giveaway notifications',
+      importance: Importance.max,
+      priority: Priority.high,
+      styleInformation: BigTextStyleInformation(
+        body,
+        contentTitle: '<b>$title</b>',
+        htmlFormatContentTitle: true,
+        htmlFormatBigText: true,
+        summaryText: 'Challenge Result',
+      ),
+      color: const Color(0xFFFFD700),
+      largeIcon:
+          const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
+      enableLights: true,
+      ledColor: const Color(0xFFFFD700),
+      ledOnMs: 800,
+      ledOffMs: 400,
+      playSound: true,
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList([0, 300, 150, 300, 150, 300]),
+    );
+
+    try {
+      await _plugin.show(
+        isEligible ? 2001 : 2002,
+        title,
+        body,
+        NotificationDetails(android: androidDetails),
+      );
+      debugPrint('[ChallengeNotif] Notification fired successfully');
+    } catch (e) {
+      debugPrint('[ChallengeNotif] ERROR firing notification: $e');
+    }
+  }
+}
