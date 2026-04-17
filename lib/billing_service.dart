@@ -69,6 +69,9 @@ class BillingService extends ChangeNotifier {
   bool isLongTermPremium = false;
   String? purchasedPlanType; // '6_month' or '12_month' — used by challenge system
 
+  /// The userId this premium state belongs to. Prevents cross-account leakage.
+  String? _activeUserId;
+
   // Broadcast the last purchase outcome so UI widgets can react
   PurchaseOutcome lastPurchaseOutcome = PurchaseOutcome.none;
   String? lastPurchaseErrorMessage;
@@ -106,11 +109,50 @@ class BillingService extends ChangeNotifier {
     _purchaseSubscription = _iap.purchaseStream.listen(
       _onPurchaseUpdate,
       onDone: () => _purchaseSubscription?.cancel(),
-      onError: (error) => debugPrint('[BillingService] Stream error: $error'),
+      onError: (error) => debugPrint('[BillingService] Stream error: \$error'),
     );
 
     await _loadProducts();
     await _checkPremiumStatusFirebase();
+  }
+
+  // ── Account-scoped reset ───────────────────────────────────────────────────
+  /// Call on every login / app start to bind premium state to the current user.
+  /// Clears any stale premium flags from a previous account before fetching.
+  Future<void> resetForUser(String userId) async {
+    if (_activeUserId == userId) {
+      // Same user, just refresh from backend
+      debugPrint('[BillingService] resetForUser: same user $userId — refreshing');
+      await _checkPremiumStatusFirebase();
+      return;
+    }
+
+    debugPrint('[BillingService] resetForUser: switching from $_activeUserId → $userId');
+    // New user — wipe all premium state first
+    _clearLocalPremiumState();
+    _activeUserId = userId;
+    await _checkPremiumStatusFirebase();
+    _logPremiumState('resetForUser complete');
+  }
+
+  /// Call on sign-out to immediately remove all premium UI.
+  void clearPremiumState() {
+    debugPrint('[BillingService] clearPremiumState — wiping all premium flags');
+    _clearLocalPremiumState();
+    _activeUserId = null;
+    notifyListeners();
+  }
+
+  void _clearLocalPremiumState() {
+    isPremium = false;
+    isLongTermPremium = false;
+    purchasedPlanType = null;
+    lastPurchaseOutcome = PurchaseOutcome.none;
+    lastPurchaseErrorMessage = null;
+  }
+
+  void _logPremiumState(String context) {
+    debugPrint('[BillingService] [$context] userId=$_activeUserId isPremium=$isPremium isLongTermPremium=$isLongTermPremium planType=$purchasedPlanType');
   }
 
   // ── Product Loading ────────────────────────────────────────────────────────
@@ -212,6 +254,16 @@ class BillingService extends ChangeNotifier {
   }
 
   Future<void> _deliverProduct(PurchaseDetails purchase) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      debugPrint('[BillingService] _deliverProduct: no user logged in — ignoring');
+      isProcessingPurchase = false;
+      notifyListeners();
+      return;
+    }
+
+    // Bind to current user
+    _activeUserId = user.uid;
     isPremium = true;
     isProcessingPurchase = false;
     lastPurchaseOutcome = PurchaseOutcome.success;
@@ -227,6 +279,7 @@ class BillingService extends ChangeNotifier {
       purchasedPlanType = '12_month';
     }
 
+    _logPremiumState('_deliverProduct');
     notifyListeners();
     await _updatePremiumInFirebase(true, isLongTermPlan: isLongTermPlan, planType: purchasedPlanType);
   }
@@ -234,6 +287,11 @@ class BillingService extends ChangeNotifier {
   Future<void> _updatePremiumInFirebase(bool premium, {bool isLongTermPlan = false, String? planType}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    // Safety: only write to the user we're tracking
+    if (_activeUserId != null && _activeUserId != user.uid) {
+      debugPrint('[BillingService] WARN: _updatePremiumInFirebase userId mismatch, aborting write');
+      return;
+    }
     try {
       final data = <String, dynamic>{
         'isPremium': premium,
@@ -252,20 +310,64 @@ class BillingService extends ChangeNotifier {
 
   Future<void> _checkPremiumStatusFirebase() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      debugPrint('[BillingService] _checkPremiumStatusFirebase: no user — clearing state');
+      _clearLocalPremiumState();
+      notifyListeners();
+      return;
+    }
+    // Safety: if activeUserId is set, only read for that user
+    if (_activeUserId != null && _activeUserId != user.uid) {
+      debugPrint('[BillingService] WARN: _checkPremiumStatusFirebase userId mismatch ($_activeUserId vs ${user.uid}), clearing');
+      _clearLocalPremiumState();
+      notifyListeners();
+      return;
+    }
+    _activeUserId = user.uid;
     try {
+      // Force server fetch to avoid stale cache from a previous account
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .get();
+          .get(const GetOptions(source: Source.server));
       if (doc.exists && doc.data()!['isPremium'] == true) {
         isPremium = true;
         isLongTermPremium = doc.data()!['isLongTermPremium'] == true;
         purchasedPlanType = doc.data()!['purchasedPlanType'] as String?;
+      } else {
+        // Explicit: user doc doesn't have premium → force free
+        isPremium = false;
+        isLongTermPremium = false;
+        purchasedPlanType = null;
+      }
+      _logPremiumState('_checkPremiumStatusFirebase');
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[BillingService] Firebase check error: $e — falling back to cache');
+      // Fallback to cache if server unreachable
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get(const GetOptions(source: Source.cache));
+        if (doc.exists && doc.data()!['isPremium'] == true) {
+          isPremium = true;
+          isLongTermPremium = doc.data()!['isLongTermPremium'] == true;
+          purchasedPlanType = doc.data()!['purchasedPlanType'] as String?;
+        } else {
+          isPremium = false;
+          isLongTermPremium = false;
+          purchasedPlanType = null;
+        }
+        _logPremiumState('_checkPremiumStatusFirebase (cache fallback)');
+        notifyListeners();
+      } catch (e2) {
+        debugPrint('[BillingService] Cache fallback also failed: $e2 — forcing free mode');
+        isPremium = false;
+        isLongTermPremium = false;
+        purchasedPlanType = null;
         notifyListeners();
       }
-    } catch (e) {
-      debugPrint('[BillingService] Firebase check error: $e');
     }
   }
 

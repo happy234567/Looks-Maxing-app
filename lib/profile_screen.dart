@@ -384,6 +384,7 @@ class _ProfilePageState extends State<ProfilePage> {
     ));
     if (confirm == true) {
       await NotificationService.removeTokenOnLogout();
+      BillingService().clearPremiumState();
       final p = await SharedPreferences.getInstance(); await p.clear();
       await GoogleSignIn().signOut(); await FirebaseAuth.instance.signOut();
       if (!mounted) return;

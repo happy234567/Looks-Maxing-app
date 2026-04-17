@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'notification_service.dart';
+import 'billing_service.dart';
 
 /// Result of checking whether a deleted user's cooldown has expired.
 class DeletedUserCheckResult {
@@ -147,6 +148,9 @@ class DeletedUsersService {
     // 5. Clear local preferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
+
+    // 5b. Clear premium state from singleton
+    BillingService().clearPremiumState();
 
     // 6. Sign out (Firebase Auth entry is deleted after 7 days via Cloud Function)
     await GoogleSignIn().signOut();

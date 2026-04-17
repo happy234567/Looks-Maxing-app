@@ -12,6 +12,7 @@ import 'main.dart';
 import 'notification_service.dart';
 import 'deleted_users_service.dart';
 import 'scan_cooldown_service.dart';
+import 'billing_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -129,6 +130,14 @@ class _LoginScreenState extends State<LoginScreen> {
         await ScanCooldownService.syncFromFirestore();
       } catch (e) {
         debugPrint('Scan cooldown sync failed: $e');
+      }
+      if (!mounted) return;
+
+      // Bind premium state to THIS user (clears any previous account's state)
+      try {
+        await BillingService().resetForUser(user.uid);
+      } catch (e) {
+        debugPrint('[Login] BillingService resetForUser failed: $e');
       }
       if (!mounted) return;
 

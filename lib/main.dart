@@ -135,6 +135,16 @@ class _SplashScreenState extends State<SplashScreen> {
       await BillingService().initialize().timeout(const Duration(seconds: 5));
     } catch (_) {}
 
+    // Scope premium state to the currently signed-in user
+    final earlyUser = FirebaseAuth.instance.currentUser;
+    if (earlyUser != null) {
+      try {
+        await BillingService().resetForUser(earlyUser.uid).timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    } else {
+      BillingService().clearPremiumState();
+    }
+
     try {
       await AdService().initialize().timeout(const Duration(seconds: 5));
     } catch (_) {}
@@ -159,6 +169,7 @@ class _SplashScreenState extends State<SplashScreen> {
         final cooldown = await DeletedUsersService.checkCooldown(user.uid);
         if (cooldown.blocked) {
           // User is in cooldown — sign them out and force login screen
+          BillingService().clearPremiumState();
           await FirebaseAuth.instance.signOut();
           initialScreen = const LoginScreen();
         } else {
