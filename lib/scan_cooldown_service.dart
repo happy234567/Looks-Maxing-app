@@ -14,15 +14,25 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 // When cooldown ends → local notification fires
 //
 // Cooldown is stored in FIRESTORE (server-side, survives sign-out/app data
-// clear/reinstall). SharedPreferences is only used as a fast local cache.
+// clear/reinstall). SharedPreferences is only used as a fast local cache,
+// and ALL local keys are scoped to the current userId to prevent
+// cross-account leakage.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ScanCooldownService {
-  static const String _kLastScanDate = 'last_scan_date';
+  // Local cache key prefix — actual key is '${_kLastScanPrefix}_{userId}'
+  static const String _kLastScanPrefix = 'last_scan_date';
   static const int _scanReadyNotifId = 2001;
 
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+
+  /// Returns the user-scoped SharedPreferences key for the last scan date.
+  static String _userKey(String userId) => '${_kLastScanPrefix}_$userId';
+
+  /// Returns the current Firebase userId, or null if not signed in.
+  static String? get _currentUserId =>
+      FirebaseAuth.instance.currentUser?.uid;
 
   // ── Initialize (call once in main) ───────────────────────────────────────
 
@@ -55,6 +65,24 @@ class ScanCooldownService {
         ?.createNotificationChannel(channel);
   }
 
+  // ── Clear local cooldown cache for previous user ─────────────────────────
+  // Call on sign-out or account switch to prevent cross-account leakage.
+
+  static Future<void> clearLocalCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys();
+      for (final key in keys) {
+        if (key.startsWith(_kLastScanPrefix)) {
+          await prefs.remove(key);
+        }
+      }
+      debugPrint('[ScanCooldown] Cleared all local cooldown cache');
+    } catch (e) {
+      debugPrint('[ScanCooldown] Failed to clear local cache: $e');
+    }
+  }
+
   // ── Sync cooldown from Firestore into local cache ────────────────────────
   // Call this after sign-in so the cooldown survives sign-out/reinstall.
 
@@ -72,39 +100,43 @@ class ScanCooldownService {
       if (doc.exists && doc.data()?['lastScanDate'] != null) {
         final lastScanStr = doc.data()!['lastScanDate'] as String;
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_kLastScanDate, lastScanStr);
-        debugPrint('Scan cooldown synced from Firestore: $lastScanStr');
+        // Store under user-scoped key
+        await prefs.setString(_userKey(user.uid), lastScanStr);
+        debugPrint('[ScanCooldown] Synced from Firestore for ${user.uid}: $lastScanStr');
       }
     } catch (e) {
-      debugPrint('Failed to sync scan cooldown from Firestore: $e');
+      debugPrint('[ScanCooldown] Failed to sync from Firestore: $e');
     }
   }
 
   // ── Save the date+time of the latest scan ────────────────────────────────
 
   static Future<void> recordScan({required bool isPremium}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      debugPrint('[ScanCooldown] recordScan: no user signed in — skipping');
+      return;
+    }
+
     final now = DateTime.now();
     final nowStr = now.toIso8601String();
 
-    // 1. Save to local cache (fast reads)
+    // 1. Save to local cache (fast reads) — user-scoped key
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kLastScanDate, nowStr);
+    await prefs.setString(_userKey(user.uid), nowStr);
 
     // 2. Save to Firestore (survives sign-out, app data clear, reinstall)
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .set({
-          'lastScanDate': nowStr,
-          'lastScanTimestamp': Timestamp.fromDate(now),
-        }, SetOptions(merge: true));
-        debugPrint('Scan cooldown saved to Firestore');
-      }
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'lastScanDate': nowStr,
+        'lastScanTimestamp': Timestamp.fromDate(now),
+      }, SetOptions(merge: true));
+      debugPrint('[ScanCooldown] Saved to Firestore for ${user.uid}');
     } catch (e) {
-      debugPrint('Failed to save scan cooldown to Firestore: $e');
+      debugPrint('[ScanCooldown] Failed to save to Firestore: $e');
     }
 
     // 3. Schedule "scan ready" notification
@@ -116,8 +148,11 @@ class ScanCooldownService {
   // ── Get the last scan date (Firestore first, local cache fallback) ──────
 
   static Future<String?> _getLastScanDate() async {
+    final userId = _currentUserId;
+    if (userId == null) return null;
+
     final prefs = await SharedPreferences.getInstance();
-    final localStr = prefs.getString(_kLastScanDate);
+    final localStr = prefs.getString(_userKey(userId));
 
     // Try Firestore for the authoritative value
     try {
@@ -135,14 +170,14 @@ class ScanCooldownService {
           // If Firestore has a NEWER scan date than local, use Firestore
           // (handles case where local was cleared)
           if (localStr == null) {
-            await prefs.setString(_kLastScanDate, firestoreStr);
+            await prefs.setString(_userKey(userId), firestoreStr);
             return firestoreStr;
           }
 
           final localDate = DateTime.parse(localStr);
           final firestoreDate = DateTime.parse(firestoreStr);
           if (firestoreDate.isAfter(localDate)) {
-            await prefs.setString(_kLastScanDate, firestoreStr);
+            await prefs.setString(_userKey(userId), firestoreStr);
             return firestoreStr;
           }
         }

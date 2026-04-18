@@ -29,20 +29,71 @@ class AdService {
   DateTime? _lastAppOpenShown;
   bool _initialized = false;
 
+  /// The userId this ad state belongs to. Prevents cross-account leakage.
+  String? _activeUserId;
+
   // ── Init ───────────────────────────────────────────────────────────────────
   Future<void> initialize() async {
     if (_initialized) return;
     await MobileAds.instance.initialize();
     _initialized = true;
-    debugPrint('[AdService] Initialized');
+    _activeUserId = FirebaseAuth.instance.currentUser?.uid;
+    debugPrint('[AdService] Initialized for user=$_activeUserId');
     _preloadRewarded();
     _preloadAppOpen();
   }
 
-  // ── Daily Ad Count (Firestore) ─────────────────────────────────────────────
+  // ── Account-scoped reset ─────────────────────────────────────────────────
+  /// Call on every login / account switch to bind ad state to the current user.
+  /// Resets per-session ad state so the new user starts fresh.
+  void resetForUser(String userId) {
+    if (_activeUserId == userId) {
+      debugPrint('[AdService] resetForUser: same user $userId — no change');
+      return;
+    }
+
+    debugPrint('[AdService] resetForUser: switching from $_activeUserId → $userId');
+    _activeUserId = userId;
+
+    // Reset session-level ad state for the new user
+    _appOpenShownThisSession = false;
+    _lastAppOpenShown = null;
+
+    // Dispose existing preloaded ads (they may carry the old user's context)
+    _rewardedAd?.dispose();
+    _rewardedAd = null;
+    _appOpenAd?.dispose();
+    _appOpenAd = null;
+    _isLoadingRewarded = false;
+
+    // Preload fresh ads for the new user
+    _preloadRewarded();
+    _preloadAppOpen();
+  }
+
+  /// Call on sign-out to immediately clear all ad state.
+  void clearOnSignOut() {
+    debugPrint('[AdService] clearOnSignOut — wiping ad state');
+    _activeUserId = null;
+    _appOpenShownThisSession = false;
+    _lastAppOpenShown = null;
+
+    _rewardedAd?.dispose();
+    _rewardedAd = null;
+    _appOpenAd?.dispose();
+    _appOpenAd = null;
+    _isLoadingRewarded = false;
+  }
+
+  // ── Daily Ad Count (Firestore, per-user) ───────────────────────────────────
   Future<int> _getTodayAdCount() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return 0;
+    // Safety: only read ad count for the user we're tracking
+    if (_activeUserId != null && _activeUserId != user.uid) {
+      debugPrint('[AdService] WARN: _getTodayAdCount userId mismatch, returning 0');
+      return 0;
+    }
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users').doc(user.uid).get();
@@ -60,6 +111,11 @@ class AdService {
   Future<void> _incrementAdCount() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    // Safety: only write ad count for the user we're tracking
+    if (_activeUserId != null && _activeUserId != user.uid) {
+      debugPrint('[AdService] WARN: _incrementAdCount userId mismatch, aborting');
+      return;
+    }
     try {
       final today = DateTime.now().toIso8601String().substring(0, 10);
       await FirebaseFirestore.instance

@@ -359,8 +359,13 @@ class _CameraScreenState extends State<CameraScreen> {
 
         if (!mounted) return;
 
-        // AD LOGIC
-        if (!BillingService().isPremium) {
+        // AD LOGIC — use user-scoped premium check from BillingService.
+        // isPremium is always fetched from Firestore per userId on login,
+        // so this is safe against cross-account leakage.
+        final currentBilling = BillingService();
+        final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+        debugPrint('[CameraScreen] Ad check: isPremium=${currentBilling.isPremium} userId=$currentUserId');
+        if (!currentBilling.isPremium) {
           await AdService().showScanAd(onComplete: () {
             if (!mounted) return;
             Navigator.pushReplacement(

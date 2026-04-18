@@ -13,6 +13,7 @@ import 'notification_service.dart';
 import 'deleted_users_service.dart';
 import 'scan_cooldown_service.dart';
 import 'billing_service.dart';
+import 'ad_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -113,6 +114,15 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       // ── END COOLDOWN CHECK ───────────────────────────────────────────
 
+      // ── CLEAR PREVIOUS USER STATE ────────────────────────────────────
+      // Wipe all local caches from any previous account to prevent
+      // cross-account leakage (cooldown, ads, premium).
+      try {
+        await ScanCooldownService.clearLocalCache();
+      } catch (e) {
+        debugPrint('[Login] clearLocalCache failed: $e');
+      }
+
       // Save notification token for this user (with timeout)
       try {
         await NotificationService.saveTokenAfterLogin().timeout(
@@ -138,6 +148,14 @@ class _LoginScreenState extends State<LoginScreen> {
         await BillingService().resetForUser(user.uid);
       } catch (e) {
         debugPrint('[Login] BillingService resetForUser failed: $e');
+      }
+      if (!mounted) return;
+
+      // Reset ad state for THIS user
+      try {
+        AdService().resetForUser(user.uid);
+      } catch (e) {
+        debugPrint('[Login] AdService resetForUser failed: $e');
       }
       if (!mounted) return;
 

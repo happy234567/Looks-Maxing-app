@@ -9,6 +9,8 @@ import 'login_screen.dart';
 import 'billing_service.dart';
 import 'notification_service.dart';
 import 'deleted_users_service.dart';
+import 'scan_cooldown_service.dart';
+import 'ad_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -383,8 +385,11 @@ class _ProfilePageState extends State<ProfilePage> {
       ],
     ));
     if (confirm == true) {
+      // Clear all per-user state to prevent cross-account leakage
       await NotificationService.removeTokenOnLogout();
       BillingService().clearPremiumState();
+      AdService().clearOnSignOut();
+      await ScanCooldownService.clearLocalCache();
       final p = await SharedPreferences.getInstance(); await p.clear();
       await GoogleSignIn().signOut(); await FirebaseAuth.instance.signOut();
       if (!mounted) return;

@@ -1406,7 +1406,7 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
             ),
             const SizedBox(height: 10),
             ...[
-              '🎁  Amazon vouchers worth up to 300$',
+              '🎁  Amazon vouchers worth upto \$300',
               '🎁  Free products',
               '🎁  Protein powder',
               '🎁  Creatine supplements',

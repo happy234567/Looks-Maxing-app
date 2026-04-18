@@ -135,9 +135,21 @@ class _SplashScreenState extends State<SplashScreen> {
       await BillingService().initialize().timeout(const Duration(seconds: 5));
     } catch (_) {}
 
-    // Scope premium state to the currently signed-in user
+    // Scope ALL per-user state to the currently signed-in user.
+    // This prevents cross-account leakage of premium, cooldown, and ad state.
     final earlyUser = FirebaseAuth.instance.currentUser;
     if (earlyUser != null) {
+      // Clear stale local cache from any previous account
+      try {
+        await ScanCooldownService.clearLocalCache();
+      } catch (_) {}
+
+      // Re-sync cooldown from Firestore for THIS user
+      try {
+        await ScanCooldownService.syncFromFirestore().timeout(const Duration(seconds: 5));
+      } catch (_) {}
+
+      // Bind premium state to THIS user
       try {
         await BillingService().resetForUser(earlyUser.uid).timeout(const Duration(seconds: 5));
       } catch (_) {}
@@ -149,8 +161,18 @@ class _SplashScreenState extends State<SplashScreen> {
       await AdService().initialize().timeout(const Duration(seconds: 5));
     } catch (_) {}
 
+    // Scope ad state to current user
+    if (earlyUser != null) {
+      try {
+        AdService().resetForUser(earlyUser.uid);
+      } catch (_) {}
+    } else {
+      AdService().clearOnSignOut();
+    }
+
     // Show app open ad after 2s delay so the ad has time to preload.
     // Only once per session, only for free users.
+    // Always check isPremium FRESH from BillingService (which is now user-scoped).
     Future.delayed(const Duration(seconds: 2), () async {
       try {
         final billing = BillingService();
