@@ -98,9 +98,7 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
   @override
   Widget build(BuildContext context) {
     final accuracy = (widget.challenge.calculatedAccuracy * 100).round();
-    final is350 = widget.challenge.planType == '12_month';
-    final primaryColor =
-        is350 ? const Color(0xFF7B68EE) : const Color(0xFFFFD700);
+    const primaryColor = Color(0xFFFFD700);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),

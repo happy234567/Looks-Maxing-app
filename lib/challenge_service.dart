@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart';
 
 class ChallengeData {
   String planType; // "6_month" or "12_month"
-  int totalDays; // 150 or 350
+  int totalDays; // always 150
   DateTime startDate;
   int completedDays;
   double accuracy;
@@ -170,7 +170,7 @@ class ChallengeService {
     // Archive any existing challenge first (repurchase safety)
     await _archiveCurrentChallenge();
 
-    final totalDays = planType == '12_month' ? 350 : 150;
+    const totalDays = 150; // Same 150-day giveaway for all premium plans
     final now = DateTime.now();
     final startDate = DateTime(now.year, now.month, now.day);
 

@@ -167,22 +167,16 @@ class _ChallengeCardState extends State<ChallengeCard>
     super.dispose();
   }
 
-  // ── Theme helpers ─────────────────────────────────────────────────────────
+  // ── Theme helpers (same for all plans — 150-day giveaway) ─────────────────
 
-  bool get _is350 => widget.challenge.planType == '12_month';
+  List<Color> get _gradientColors =>
+      [const Color(0xFF1A1800), const Color(0xFF0D1A0A)];
 
-  List<Color> get _gradientColors => _is350
-      ? [const Color(0xFF12082A), const Color(0xFF081428)]
-      : [const Color(0xFF1A1800), const Color(0xFF0D1A0A)];
+  Color get _primaryColor => const Color(0xFFFFD700);
 
-  Color get _primaryColor =>
-      _is350 ? const Color(0xFF7B68EE) : const Color(0xFFFFD700);
+  Color get _secondaryColor => const Color(0xFF4CAF50);
 
-  Color get _secondaryColor =>
-      _is350 ? const Color(0xFF00D4FF) : const Color(0xFF4CAF50);
-
-  Color get _borderColor =>
-      _is350 ? const Color(0xFF9C27B0) : const Color(0xFFFFD700);
+  Color get _borderColor => const Color(0xFFFFD700);
 
   Color _accuracyColor(double accuracy) {
     if (accuracy >= 0.9) return const Color(0xFF4CAF50);
@@ -236,9 +230,7 @@ class _ChallengeCardState extends State<ChallengeCard>
               children: [
                 // ── Title ──
                 Text(
-                  _is350
-                      ? '👑 350 Day Mega Challenge'
-                      : '🏆 150 Day Challenge',
+                  '🏆 150 Day Challenge',
                   style: TextStyle(
                     color: _primaryColor,
                     fontSize: 16,
