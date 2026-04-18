@@ -171,10 +171,16 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     // Show app open ad after 2s delay so the ad has time to preload.
-    // Only once per session, only for free users.
-    // Always check isPremium FRESH from BillingService (which is now user-scoped).
+    // Only once per session, only for free users, only if already signed in.
+    // If the user is on the login screen (no user), skip — the ad will be
+    // triggered after login navigates to MainNavigation instead.
     Future.delayed(const Duration(seconds: 2), () async {
       try {
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser == null) {
+          debugPrint('[AdService] No user signed in — skipping app open ad');
+          return;
+        }
         final billing = BillingService();
         if (!billing.isPremium) {
           await AdService().showAppOpenAdIfReady();

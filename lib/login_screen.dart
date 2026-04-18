@@ -25,6 +25,19 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
+  /// Trigger app open ad after a fresh login for free users.
+  /// Called after navigating to MainNavigation so the ad appears on the main screen.
+  void _triggerPostLoginAd() {
+    Future.delayed(const Duration(seconds: 2), () async {
+      try {
+        final billing = BillingService();
+        if (!billing.isPremium) {
+          await AdService().showAppOpenAdIfReady();
+        }
+      } catch (_) {}
+    });
+  }
+
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
     
@@ -201,6 +214,8 @@ class _LoginScreenState extends State<LoginScreen> {
           } else {
             Navigator.pushReplacement(context,
                 MaterialPageRoute(builder: (_) => const MainNavigation()));
+            // Trigger app open ad for free users after fresh login
+            _triggerPostLoginAd();
           }
         } else {
           if (!mounted) return;
