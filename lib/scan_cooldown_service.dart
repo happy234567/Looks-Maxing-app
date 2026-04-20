@@ -7,6 +7,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SCAN COOLDOWN SERVICE
 // Free users  → 1 scan per 30 days
@@ -22,7 +23,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class ScanCooldownService {
   // Local cache key prefix — actual key is '${_kLastScanPrefix}_{userId}'
   static const String _kLastScanPrefix = 'last_scan_date';
-  static const int _scanReadyNotifId = 2001;
+  static const int _scanReadyNotifId = 3001; // Changed from 2001 to avoid collision with challenge result notif
 
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -38,6 +39,14 @@ class ScanCooldownService {
 
   static Future<void> initialize() async {
     tzdata.initializeTimeZones();
+    // Set local timezone so scheduled notifications fire at the correct local time
+    try {
+      final locationName = await _getNativeTimezone();
+      tz.setLocalLocation(tz.getLocation(locationName));
+      debugPrint('[ScanCooldown] Timezone set to: $locationName');
+    } catch (e) {
+      debugPrint('[ScanCooldown] Failed to set timezone, using UTC: $e');
+    }
 
     const androidInit = AndroidInitializationSettings('@drawable/ic_stat_notification');
     const initSettings = InitializationSettings(android: androidInit);
@@ -315,5 +324,20 @@ class ScanCooldownService {
         DateTime.now().difference(lastScan).inMilliseconds.clamp(0, totalMs);
 
     return elapsedMs / totalMs; // 0.0 = just scanned, 1.0 = cooldown done
+  }
+
+  /// Resolve the device's IANA timezone name from the OS.
+  static Future<String> _getNativeTimezone() async {
+    try {
+      final now = DateTime.now();
+      final offset = now.timeZoneOffset;
+      for (final loc in tz.timeZoneDatabase.locations.values) {
+        final tzNow = tz.TZDateTime.now(loc);
+        if (tzNow.timeZoneOffset == offset) {
+          return loc.name;
+        }
+      }
+    } catch (_) {}
+    return DateTime.now().timeZoneName;
   }
 }

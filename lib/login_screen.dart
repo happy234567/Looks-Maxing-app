@@ -136,7 +136,16 @@ class _LoginScreenState extends State<LoginScreen> {
         debugPrint('[Login] clearLocalCache failed: $e');
       }
 
-      // Save notification token for this user (with timeout)
+      // Initialize FCM (foreground listener) + save token for this user
+      try {
+        await NotificationService.initialize().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () =>
+              debugPrint("Notification init timed out - offline?"),
+        );
+      } catch (e) {
+        debugPrint("Notification init failed (offline?): $e");
+      }
       try {
         await NotificationService.saveTokenAfterLogin().timeout(
           const Duration(seconds: 3),

@@ -69,7 +69,7 @@ const List<ShopProduct> _products = [
     coreBenefit: 'Best budget face wash for acne-prone skin.',
     myExperience:
         'This has been my daily go-to for over 2 years—and nothing has come close. It controls oil without stripping your skin dry, and at this price, it\'s the best value on the market for acne-prone skin. Just make sure you follow up with a moisturizer after.',
-    affiliateUrl: 'https://amzn.to/47T0CjU',
+    affiliateUrl: 'https://amzn.to/4dU9jyd',
     benefits: [
       'Controls excess oil production',
       'Budget-friendly without compromising quality',
@@ -184,7 +184,7 @@ const List<ShopProduct> _products = [
     coreBenefit: 'Non-greasy, pore-safe hydration at an unbeatable price.',
     myExperience:
         'Finding a moisturizer that\'s both non-greasy AND non-comedogenic at this price point is rare. Most affordable options clog your pores—this one doesn\'t. It absorbs clean, keeps skin hydrated all day, and the value is genuinely incredible.',
-    affiliateUrl: 'https://amzn.to/4vo1w20',
+    affiliateUrl: 'https://amzn.to/4dYK8KO',
     benefits: [
       'Strictly non-comedogenic (won\'t clog pores)',
       'Non-greasy, fast-absorbing formula',

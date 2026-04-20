@@ -5,6 +5,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LOCK IN NOTIFICATION SERVICE
 // Sends 2 automatic daily notifications:
@@ -27,8 +28,15 @@ class LockInNotificationService {
   // ── Initialize — call once when app starts ───────────────────────────────
 
   static Future<void> initialize() async {
-    // Initialize timezone data
+    // Initialize timezone data and set local timezone
     tzdata.initializeTimeZones();
+    try {
+      final locationName = await _getNativeTimezone();
+      tz.setLocalLocation(tz.getLocation(locationName));
+      debugPrint('[LockInNotif] Timezone set to: $locationName');
+    } catch (e) {
+      debugPrint('[LockInNotif] Failed to set timezone, using UTC: $e');
+    }
 
     // Android setup
     const androidInit = AndroidInitializationSettings('@drawable/ic_stat_notification');
@@ -44,7 +52,7 @@ class LockInNotificationService {
       'lock_in_channel_v2',
       'Lock In Reminders',
       description: 'Daily reminders to complete your Lock In tasks',
-      importance: Importance.defaultImportance,
+      importance: Importance.high,
       playSound: true,
       enableVibration: true,
     );
@@ -120,6 +128,20 @@ class LockInNotificationService {
       debugPrint('Scheduled 8PM reminder for day $dayNumber');
     }
 
+    // ── 11 PM — danger alert ──────────────────────────────────────────────
+    final elevenPM = DateTime(now.year, now.month, now.day, 23, 0, 0);
+    if (now.isBefore(elevenPM)) {
+      await _schedule(
+        id: _dangerNotifId,
+        title: '🚨 1 HOUR LEFT!',
+        body: 'Day $dayNumber is almost over! Complete your tasks NOW or lose your streak.',
+        bigText: 'Day $dayNumber is almost over! You only have 1 hour left to complete your tasks. Don\'t let your streak die — open the app and finish strong! 💪',
+        scheduledTime: elevenPM,
+        isDanger: true,
+      );
+      debugPrint('Scheduled 11PM danger alert for day $dayNumber');
+    }
+
     await prefs.setString(_kScheduledDay, todayKey);
   }
 
@@ -151,8 +173,8 @@ class LockInNotificationService {
       'lock_in_channel_v2',
       'Lock In Reminders',
       channelDescription: 'Daily reminders to complete your Lock In tasks',
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
+      importance: Importance.high,
+      priority: Priority.high,
       styleInformation: BigTextStyleInformation(
         bigText,
         htmlFormatBigText: false,
@@ -231,5 +253,23 @@ class LockInNotificationService {
     } catch (e) {
       debugPrint('[ChallengeNotif] ERROR firing notification: $e');
     }
+  }
+
+  /// Resolve the device's IANA timezone name from the OS.
+  static Future<String> _getNativeTimezone() async {
+    try {
+      // Use the OS timezone offset to find a matching IANA timezone
+      final now = DateTime.now();
+      final offset = now.timeZoneOffset;
+      // Try common timezones matching this offset
+      for (final loc in tz.timeZoneDatabase.locations.values) {
+        final tzNow = tz.TZDateTime.now(loc);
+        if (tzNow.timeZoneOffset == offset) {
+          return loc.name;
+        }
+      }
+    } catch (_) {}
+    // Fallback: use the Dart-reported timezone name
+    return DateTime.now().timeZoneName;
   }
 }
