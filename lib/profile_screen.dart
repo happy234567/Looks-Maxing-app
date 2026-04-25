@@ -10,6 +10,7 @@ import 'billing_service.dart';
 import 'notification_service.dart';
 import 'deleted_users_service.dart';
 import 'scan_cooldown_service.dart';
+import 'lock_in_notification_service.dart';
 import 'ad_service.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -386,6 +387,7 @@ class _ProfilePageState extends State<ProfilePage> {
     ));
     if (confirm == true) {
       // Clear all per-user state to prevent cross-account leakage
+      await LockInNotificationService.cancelAll();
       await NotificationService.removeTokenOnLogout();
       BillingService().clearPremiumState();
       AdService().clearOnSignOut();
