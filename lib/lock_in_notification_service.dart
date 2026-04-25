@@ -3,51 +3,56 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'notification_plugin.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOCK IN NOTIFICATION SERVICE
 // Sends 2 automatic daily notifications:
-//   1. 7 PM  — "5 hours left" gentle reminder
-//   2. 11 PM — "1 hour left" danger alert
+//   1. 8 PM  — gentle reminder
+//   2. 11 PM — 1 hour left danger alert
 // Both are cancelled automatically when user completes the day.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class LockInNotificationService {
-  static final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _plugin = sharedNotificationsPlugin;
 
-  // Fixed IDs so we can cancel specific notifications
-  static const int _reminderNotifId = 1001; // 7 PM reminder
-  static const int _dangerNotifId   = 1002; // 11 PM danger
-
-  // Key to avoid scheduling twice on the same day
+  static const int _reminderNotifId = 1001;
+  static const int _dangerNotifId   = 1002;
   static const String _kScheduledDay = 'notif_scheduled_day';
 
-  // ── Initialize — call once when app starts ───────────────────────────────
-
   static Future<void> initialize() async {
-    // Initialize timezone data and set local timezone
+    // Initialize timezone data using the real device timezone
     tzdata.initializeTimeZones();
     try {
-      final locationName = await _getNativeTimezone();
+      final locationName = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(locationName));
       debugPrint('[LockInNotif] Timezone set to: $locationName');
     } catch (e) {
       debugPrint('[LockInNotif] Failed to set timezone, using UTC: $e');
     }
 
-    // Android setup
     const androidInit = AndroidInitializationSettings('@drawable/ic_stat_notification');
-    const initSettings = InitializationSettings(android: androidInit);
+
+    // iOS support added
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    const initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: iosInit,
+    );
 
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTap,
     );
 
-    // Create notification channel (required on Android 8+)
+    // Android channel: daily lock-in reminders
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'lock_in_channel_v2',
       'Lock In Reminders',
@@ -58,11 +63,10 @@ class LockInNotificationService {
     );
 
     await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
-    // High-importance channel for challenge results (heads-up display)
+    // Android channel: challenge results
     const AndroidNotificationChannel challengeChannel = AndroidNotificationChannel(
       'challenge_result_channel',
       'Challenge Results',
@@ -73,32 +77,24 @@ class LockInNotificationService {
     );
 
     await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(challengeChannel);
 
-    // Request notification permission (Android 13+)
+    // Request permission on Android 13+
     await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
   }
 
-  // Called when user taps a notification
   static void _onNotificationTap(NotificationResponse response) {
     debugPrint('Lock In notification tapped: id=${response.id}');
+    // TO DO: Add navigation here if you want tapping to open a specific screen
   }
-
-  // ── Schedule today's notifications ───────────────────────────────────────
-  // Call every time app opens.
-  // Skips if already scheduled today.
-  // Cancels if day is already complete.
 
   static Future<void> scheduleTodayNotifications({
     required int dayNumber,
     required double completionRate,
   }) async {
-    // Already fully done → cancel everything
     if (completionRate >= 1.0) {
       await cancelAll();
       return;
@@ -108,13 +104,11 @@ class LockInNotificationService {
     final now = DateTime.now();
     final todayKey = '${now.year}-${now.month}-${now.day}';
 
-    // Already scheduled today → skip
     if (prefs.getString(_kScheduledDay) == todayKey) return;
 
-    // Cancel leftovers from yesterday
     await cancelAll();
 
-    // ── 8 PM — gentle reminder ────────────────────────────────────────────
+    // 8 PM reminder
     final eightPM = DateTime(now.year, now.month, now.day, 20, 0, 0);
     if (now.isBefore(eightPM)) {
       await _schedule(
@@ -128,7 +122,7 @@ class LockInNotificationService {
       debugPrint('Scheduled 8PM reminder for day $dayNumber');
     }
 
-    // ── 11 PM — danger alert ──────────────────────────────────────────────
+    // 11 PM danger alert
     final elevenPM = DateTime(now.year, now.month, now.day, 23, 0, 0);
     if (now.isBefore(elevenPM)) {
       await _schedule(
@@ -145,15 +139,11 @@ class LockInNotificationService {
     await prefs.setString(_kScheduledDay, todayKey);
   }
 
-  // ── Cancel all Lock In notifications ─────────────────────────────────────
-
   static Future<void> cancelAll() async {
     await _plugin.cancel(_reminderNotifId);
     await _plugin.cancel(_dangerNotifId);
     debugPrint('Lock In notifications cancelled');
   }
-
-  // ── Internal: build and schedule one notification ────────────────────────
 
   static Future<void> _schedule({
     required int id,
@@ -195,19 +185,25 @@ class LockInNotificationService {
       showWhen: true,
     );
 
+    // iOS details
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      sound: 'default',
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
     await _plugin.zonedSchedule(
       id,
       title,
       body,
       tzScheduled,
-      NotificationDetails(android: androidDetails),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      NotificationDetails(android: androidDetails, iOS: iosDetails),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle, // exact timing
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
-
-  // ── Challenge completion result notification ─────────────────────────────
 
   static Future<void> showChallengeResult({required bool isEligible}) async {
     debugPrint('[ChallengeNotif] Firing notification: isEligible=$isEligible');
@@ -216,8 +212,7 @@ class LockInNotificationService {
         ? 'You completed the challenge and entered the giveaway! We\'ll notify you if you win.'
         : 'You needed 80% accuracy. Don\'t give up — start a new challenge!';
 
-    final AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'challenge_result_channel',
       'Challenge Results',
       channelDescription: 'Challenge completion and giveaway notifications',
@@ -231,8 +226,7 @@ class LockInNotificationService {
         summaryText: 'Challenge Result',
       ),
       color: const Color(0xFFFFD700),
-      largeIcon:
-          const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
       enableLights: true,
       ledColor: const Color(0xFFFFD700),
       ledOnMs: 800,
@@ -242,34 +236,23 @@ class LockInNotificationService {
       vibrationPattern: Int64List.fromList([0, 300, 150, 300, 150, 300]),
     );
 
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      sound: 'default',
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
     try {
       await _plugin.show(
         isEligible ? 2001 : 2002,
         title,
         body,
-        NotificationDetails(android: androidDetails),
+        NotificationDetails(android: androidDetails, iOS: iosDetails),
       );
       debugPrint('[ChallengeNotif] Notification fired successfully');
     } catch (e) {
       debugPrint('[ChallengeNotif] ERROR firing notification: $e');
     }
   }
-
-  /// Resolve the device's IANA timezone name from the OS.
-  static Future<String> _getNativeTimezone() async {
-    try {
-      // Use the OS timezone offset to find a matching IANA timezone
-      final now = DateTime.now();
-      final offset = now.timeZoneOffset;
-      // Try common timezones matching this offset
-      for (final loc in tz.timeZoneDatabase.locations.values) {
-        final tzNow = tz.TZDateTime.now(loc);
-        if (tzNow.timeZoneOffset == offset) {
-          return loc.name;
-        }
-      }
-    } catch (_) {}
-    // Fallback: use the Dart-reported timezone name
-    return DateTime.now().timeZoneName;
-  }
-}
+}

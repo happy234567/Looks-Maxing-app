@@ -5,24 +5,23 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:typed_data';
+import 'notification_plugin.dart';
 
-// This runs in the background even when app is closed
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Use plugin to show the notification if needed, or let OS handle it
   debugPrint('Background notification received: ${message.notification?.title}');
 }
 
 class NotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  static final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _localNotifications = sharedNotificationsPlugin;
 
-  // Call this once when the app starts
   static Future<void> initialize() async {
-    // 1. Android/iOS local notification settings
-    // Small icon MUST be monochrome (Android enforces this on API 21+)
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@drawable/ic_stat_notification');
-    
+    // Android local notification settings
+    const AndroidInitializationSettings androidSettings =
+        AndroidInitializationSettings('@drawable/ic_stat_notification');
+
+    // iOS local notification settings — FIXED: was missing before
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -37,8 +36,8 @@ class NotificationService {
     await _localNotifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // Handle tapping on notification
         debugPrint('Notification clicked: ${response.payload}');
+        // TO DO: Add navigation here if you want tapping to open a specific screen
       },
     );
 
@@ -50,14 +49,11 @@ class NotificationService {
     );
 
     await _localNotifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
-    // 2. Register background handler
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    // 3. Ask the user for permission
     final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
@@ -67,10 +63,8 @@ class NotificationService {
 
     debugPrint('Notification permission: ${settings.authorizationStatus}');
 
-    // 4. Get and save token
     await _saveTokenToFirestore();
 
-    // 5. Handle foreground notifications
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('Foreground notification: ${message.notification?.title}');
       if (message.notification != null) {
@@ -81,13 +75,11 @@ class NotificationService {
       }
     });
 
-    // 6. Refresh token listener
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
       _saveTokenToFirestoreWithToken(newToken);
     });
   }
 
-  /// Shows a premium notification with the app logo
   static Future<void> showPremiumNotification({
     required String title,
     required String body,
@@ -100,9 +92,7 @@ class NotificationService {
       importance: Importance.max,
       priority: Priority.high,
       ticker: 'Level Max',
-      // Small icon: monochrome silhouette (Android REQUIRES alpha-only for status bar)
       icon: '@drawable/ic_stat_notification',
-      // Large icon: full-color app logo (circular on modern Android, high visibility)
       largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
       styleInformation: BigTextStyleInformation(
         body,
@@ -111,7 +101,6 @@ class NotificationService {
         htmlFormatBigText: true,
         summaryText: 'Level Max',
       ),
-      // Gold tint applied to the small monochrome icon in the status bar
       color: const Color(0xFFFFD700),
       enableLights: true,
       ledColor: const Color(0xFFFFD700),
@@ -124,7 +113,18 @@ class NotificationService {
       autoCancel: true,
     );
 
-    final NotificationDetails details = NotificationDetails(android: androidDetails);
+    // iOS details — FIXED: was missing before
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      sound: 'default',
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    final NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,        // FIXED: iOS now gets the notification
+    );
 
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch.hashCode,
@@ -135,7 +135,6 @@ class NotificationService {
     );
   }
 
-  // Gets the FCM token for this device and saves it to the user's Firestore doc
   static Future<void> _saveTokenToFirestore() async {
     try {
       final token = await _messaging.getToken();

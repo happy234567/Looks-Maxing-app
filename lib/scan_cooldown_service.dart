@@ -4,44 +4,24 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SCAN COOLDOWN SERVICE
-// Free users  → 1 scan per 30 days
-// Premium     → 1 scan per 3 days
-// When cooldown ends → local notification fires
-//
-// Cooldown is stored in FIRESTORE (server-side, survives sign-out/app data
-// clear/reinstall). SharedPreferences is only used as a fast local cache,
-// and ALL local keys are scoped to the current userId to prevent
-// cross-account leakage.
-// ─────────────────────────────────────────────────────────────────────────────
+import 'notification_plugin.dart';
 
 class ScanCooldownService {
-  // Local cache key prefix — actual key is '${_kLastScanPrefix}_{userId}'
   static const String _kLastScanPrefix = 'last_scan_date';
-  static const int _scanReadyNotifId = 3001; // Changed from 2001 to avoid collision with challenge result notif
+  static const int _scanReadyNotifId = 3001;
 
-  static final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _plugin = sharedNotificationsPlugin;
 
-  /// Returns the user-scoped SharedPreferences key for the last scan date.
   static String _userKey(String userId) => '${_kLastScanPrefix}_$userId';
-
-  /// Returns the current Firebase userId, or null if not signed in.
-  static String? get _currentUserId =>
-      FirebaseAuth.instance.currentUser?.uid;
-
-  // ── Initialize (call once in main) ───────────────────────────────────────
+  static String? get _currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
   static Future<void> initialize() async {
     tzdata.initializeTimeZones();
-    // Set local timezone so scheduled notifications fire at the correct local time
     try {
-      final locationName = await _getNativeTimezone();
+      final locationName = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(locationName));
       debugPrint('[ScanCooldown] Timezone set to: $locationName');
     } catch (e) {
@@ -49,7 +29,18 @@ class ScanCooldownService {
     }
 
     const androidInit = AndroidInitializationSettings('@drawable/ic_stat_notification');
-    const initSettings = InitializationSettings(android: androidInit);
+
+    // iOS support added
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    const initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: iosInit,
+    );
 
     await _plugin.initialize(
       initSettings,
@@ -58,7 +49,6 @@ class ScanCooldownService {
       },
     );
 
-    // Create the notification channel
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'scan_ready_channel',
       'Face Scan Ready',
@@ -69,13 +59,9 @@ class ScanCooldownService {
     );
 
     await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
   }
-
-  // ── Clear local cooldown cache for previous user ─────────────────────────
-  // Call on sign-out or account switch to prevent cross-account leakage.
 
   static Future<void> clearLocalCache() async {
     try {
@@ -92,9 +78,6 @@ class ScanCooldownService {
     }
   }
 
-  // ── Sync cooldown from Firestore into local cache ────────────────────────
-  // Call this after sign-in so the cooldown survives sign-out/reinstall.
-
   static Future<void> syncFromFirestore() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -109,7 +92,6 @@ class ScanCooldownService {
       if (doc.exists && doc.data()?['lastScanDate'] != null) {
         final lastScanStr = doc.data()!['lastScanDate'] as String;
         final prefs = await SharedPreferences.getInstance();
-        // Store under user-scoped key
         await prefs.setString(_userKey(user.uid), lastScanStr);
         debugPrint('[ScanCooldown] Synced from Firestore for ${user.uid}: $lastScanStr');
       }
@@ -117,8 +99,6 @@ class ScanCooldownService {
       debugPrint('[ScanCooldown] Failed to sync from Firestore: $e');
     }
   }
-
-  // ── Save the date+time of the latest scan ────────────────────────────────
 
   static Future<void> recordScan({required bool isPremium}) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -130,11 +110,9 @@ class ScanCooldownService {
     final now = DateTime.now();
     final nowStr = now.toIso8601String();
 
-    // 1. Save to local cache (fast reads) — user-scoped key
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_userKey(user.uid), nowStr);
 
-    // 2. Save to Firestore (survives sign-out, app data clear, reinstall)
     try {
       await FirebaseFirestore.instance
           .collection('users')
@@ -148,13 +126,10 @@ class ScanCooldownService {
       debugPrint('[ScanCooldown] Failed to save to Firestore: $e');
     }
 
-    // 3. Schedule "scan ready" notification
     final cooldownDays = isPremium ? 3 : 30;
     final notifTime = now.add(Duration(days: cooldownDays));
     await _scheduleReadyNotification(notifTime, isPremium: isPremium);
   }
-
-  // ── Get the last scan date (Firestore first, local cache fallback) ──────
 
   static Future<String?> _getLastScanDate() async {
     final userId = _currentUserId;
@@ -163,7 +138,6 @@ class ScanCooldownService {
     final prefs = await SharedPreferences.getInstance();
     final localStr = prefs.getString(_userKey(userId));
 
-    // Try Firestore for the authoritative value
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -171,18 +145,15 @@ class ScanCooldownService {
             .collection('users')
             .doc(user.uid)
             .get(const GetOptions(source: Source.cache))
-            .timeout(const Duration(seconds: 2), onTimeout: () => throw Exception('timeout'));
+            .timeout(const Duration(seconds: 2),
+                onTimeout: () => throw Exception('timeout'));
 
         if (doc.exists && doc.data()?['lastScanDate'] != null) {
           final firestoreStr = doc.data()!['lastScanDate'] as String;
-
-          // If Firestore has a NEWER scan date than local, use Firestore
-          // (handles case where local was cleared)
           if (localStr == null) {
             await prefs.setString(_userKey(userId), firestoreStr);
             return firestoreStr;
           }
-
           final localDate = DateTime.parse(localStr);
           final firestoreDate = DateTime.parse(firestoreStr);
           if (firestoreDate.isAfter(localDate)) {
@@ -191,68 +162,49 @@ class ScanCooldownService {
           }
         }
       }
-    } catch (_) {
-      // If Firestore cache fails, fall through to local
-    }
+    } catch (_) {}
 
     return localStr;
   }
-
-  // ── Check if user can scan right now ────────────────────────────────────
 
   static Future<bool> canScan({required bool isPremium}) async {
     final remaining = await getRemainingDuration(isPremium: isPremium);
     return remaining == Duration.zero;
   }
 
-  // ── Get how much time is left (Duration.zero = can scan now) ─────────────
-
   static Future<Duration> getRemainingDuration({required bool isPremium}) async {
     final lastScanStr = await _getLastScanDate();
-
-    if (lastScanStr == null) return Duration.zero; // Never scanned before
+    if (lastScanStr == null) return Duration.zero;
 
     final lastScan = DateTime.parse(lastScanStr);
     final cooldownDays = isPremium ? 3 : 30;
     final nextScanTime = lastScan.add(Duration(days: cooldownDays));
     final now = DateTime.now();
-
     if (now.isAfter(nextScanTime)) return Duration.zero;
-
     return nextScanTime.difference(now);
   }
-
-  // ── Get next scan DateTime (null if can scan now) ────────────────────────
 
   static Future<DateTime?> getNextScanTime({required bool isPremium}) async {
     final lastScanStr = await _getLastScanDate();
     if (lastScanStr == null) return null;
-
     final lastScan = DateTime.parse(lastScanStr);
     final cooldownDays = isPremium ? 3 : 30;
     final nextScanTime = lastScan.add(Duration(days: cooldownDays));
     final now = DateTime.now();
-
     if (now.isAfter(nextScanTime)) return null;
     return nextScanTime;
   }
-
-  // ── Schedule the "Scan Ready" notification ───────────────────────────────
 
   static Future<void> _scheduleReadyNotification(
     DateTime scheduledTime, {
     required bool isPremium,
   }) async {
-    // Cancel any previous scan-ready notification
     await _plugin.cancel(_scanReadyNotifId);
 
     final tzScheduled = tz.TZDateTime.from(scheduledTime, tz.local);
+    final Int64List vibration = Int64List.fromList([0, 300, 150, 300, 150, 300]);
 
-    final Int64List vibration =
-        Int64List.fromList([0, 300, 150, 300, 150, 300]);
-
-    final AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'scan_ready_channel',
       'Face Scan Ready',
       channelDescription: 'Notifies you when your next face scan is available',
@@ -277,13 +229,21 @@ class ScanCooldownService {
       showWhen: true,
     );
 
+    // iOS support added
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      sound: 'default',
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
     await _plugin.zonedSchedule(
       _scanReadyNotifId,
       'Cooldown Complete ✅',
       'Your cooldown is over. Scan your face now to get your latest face score.',
       tzScheduled,
-      NotificationDetails(android: androidDetails),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      NotificationDetails(android: androidDetails, iOS: iosDetails),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );
@@ -291,53 +251,26 @@ class ScanCooldownService {
     debugPrint('Scan-ready notification scheduled for $scheduledTime');
   }
 
-  // ── Format remaining time nicely for the countdown bar ──────────────────
-
   static String formatRemaining(Duration d) {
     if (d == Duration.zero) return 'Available Now!';
     final days = d.inDays;
     final hours = d.inHours.remainder(24);
     final minutes = d.inMinutes.remainder(60);
     final seconds = d.inSeconds.remainder(60);
-
-    if (days > 0) {
-      return '${days}d ${hours}h ${minutes}m left';
-    } else if (hours > 0) {
-      return '${hours}h ${minutes}m ${seconds}s left';
-    } else if (minutes > 0) {
-      return '${minutes}m ${seconds}s left';
-    } else {
-      return '${seconds}s left';
-    }
+    if (days > 0) return '${days}d ${hours}h ${minutes}m left';
+    if (hours > 0) return '${hours}h ${minutes}m ${seconds}s left';
+    if (minutes > 0) return '${minutes}m ${seconds}s left';
+    return '${seconds}s left';
   }
-
-  // ── Progress 0.0→1.0 for the countdown bar (1.0 = fully ready) ──────────
 
   static Future<double> getCooldownProgress({required bool isPremium}) async {
     final lastScanStr = await _getLastScanDate();
-    if (lastScanStr == null) return 1.0; // Never scanned = fully ready
-
+    if (lastScanStr == null) return 1.0;
     final lastScan = DateTime.parse(lastScanStr);
     final cooldownDays = isPremium ? 3 : 30;
     final totalMs = Duration(days: cooldownDays).inMilliseconds;
     final elapsedMs =
         DateTime.now().difference(lastScan).inMilliseconds.clamp(0, totalMs);
-
-    return elapsedMs / totalMs; // 0.0 = just scanned, 1.0 = cooldown done
-  }
-
-  /// Resolve the device's IANA timezone name from the OS.
-  static Future<String> _getNativeTimezone() async {
-    try {
-      final now = DateTime.now();
-      final offset = now.timeZoneOffset;
-      for (final loc in tz.timeZoneDatabase.locations.values) {
-        final tzNow = tz.TZDateTime.now(loc);
-        if (tzNow.timeZoneOffset == offset) {
-          return loc.name;
-        }
-      }
-    } catch (_) {}
-    return DateTime.now().timeZoneName;
+    return elapsedMs / totalMs;
   }
 }

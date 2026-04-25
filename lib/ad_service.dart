@@ -11,10 +11,10 @@ class AdService {
   AdService._internal();
 
   // ── Ad Unit IDs ────────────────────────────────────────────────────────────
-  // TEST ID for REWARDED AD (Forces 20-30 sec video)
+  // PRODUCTION Rewarded Ad unit
   static const String _rewardedAdUnitId = 'ca-app-pub-1840880800077412/2124414737'; 
   
-  // TEST ID for App Open Ad
+  // PRODUCTION App Open Ad unit
   static const String _appOpenAdUnitId  = 'ca-app-pub-1840880800077412/6573352674'; 
 
   // ── Config ─────────────────────────────────────────────────────────────────

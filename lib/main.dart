@@ -125,7 +125,12 @@ class _SplashScreenState extends State<SplashScreen> {
 
     try {
       await LockInNotificationService.initialize().timeout(const Duration(seconds: 3));
-    } catch (_) {}
+      } catch (_) {}
+
+     // Initialize FCM notifications early (not just after login)
+    try {
+      await NotificationService.initialize().timeout(const Duration(seconds: 3));
+      } catch (_) {}
 
     try {
       await ScanCooldownService.initialize().timeout(const Duration(seconds: 3));
@@ -201,10 +206,6 @@ class _SplashScreenState extends State<SplashScreen> {
           await FirebaseAuth.instance.signOut();
           initialScreen = const LoginScreen();
         } else {
-          // User is logged in and not in cooldown — safe to init notifications
-          try {
-            await NotificationService.initialize().timeout(const Duration(seconds: 3));
-          } catch (_) {}
 
           // Not in cooldown — check normal profile
           try {
