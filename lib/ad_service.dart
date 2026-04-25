@@ -12,10 +12,10 @@ class AdService {
 
   // ── Ad Unit IDs ────────────────────────────────────────────────────────────
   // PRODUCTION Rewarded Ad unit
-  static const String _rewardedAdUnitId = 'ca-app-pub-1840880800077412/2124414737'; 
+  static const String _rewardedAdUnitId = 'ca-app-pub-3940256099942544/5224354917'; 
   
   // PRODUCTION App Open Ad unit
-  static const String _appOpenAdUnitId  = 'ca-app-pub-1840880800077412/6573352674'; 
+  static const String _appOpenAdUnitId  = 'ca-app-pub-3940256099942544/9257395921'; 
 
   // ── Config ─────────────────────────────────────────────────────────────────
   static const int _maxAdsPerDay   = 5;

@@ -199,7 +199,7 @@ class LockInNotificationService {
       body,
       tzScheduled,
       NotificationDetails(android: androidDetails, iOS: iosDetails),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle, // exact timing
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, // exact timing
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );

@@ -243,7 +243,7 @@ class ScanCooldownService {
       'Your cooldown is over. Scan your face now to get your latest face score.',
       tzScheduled,
       NotificationDetails(android: androidDetails, iOS: iosDetails),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );
