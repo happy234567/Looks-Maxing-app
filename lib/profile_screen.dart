@@ -371,33 +371,49 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _signOut() async {
-    final confirm = await showDialog<bool>(context: context, builder: (_) => AlertDialog(
-      backgroundColor: const Color(0xFF1A1A1A),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: const Row(children: [Icon(Icons.logout, color: Color(0xFFFFD700), size: 22), SizedBox(width: 10),
-        Text('Sign Out', style: TextStyle(color: Colors.white))]),
-      content: const Text('Are you sure?', style: TextStyle(color: Colors.white70)),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-        ElevatedButton(onPressed: () => Navigator.pop(context, true),
-          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-          child: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold))),
-      ],
-    ));
-    if (confirm == true) {
-      // Clear all per-user state to prevent cross-account leakage
-      await LockInNotificationService.cancelAll();
-      await NotificationService.removeTokenOnLogout();
-      BillingService().clearPremiumState();
-      AdService().clearOnSignOut();
-      await ScanCooldownService.clearLocalCache();
-      final p = await SharedPreferences.getInstance(); await p.clear();
-      await GoogleSignIn().signOut(); await FirebaseAuth.instance.signOut();
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
-    }
-  }
+  final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+    backgroundColor: const Color(0xFF1A1A1A),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    title: const Row(children: [Icon(Icons.logout, color: Color(0xFFFFD700), size: 22), SizedBox(width: 10),
+      Text('Sign Out', style: TextStyle(color: Colors.white))]),
+    content: const Text('Are you sure?', style: TextStyle(color: Colors.white70)),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+      ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+        child: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold))),
+    ],
+  ));
+  if (confirm != true) return;
+  try {
+    await LockInNotificationService.cancelAll();
+  } catch (_) {}
+  try {
+    await NotificationService.removeTokenOnLogout();
+  } catch (_) {}
+  BillingService().clearPremiumState();
+  AdService().clearOnSignOut();
+  try {
+    await ScanCooldownService.clearLocalCache();
+  } catch (_) {}
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+  } catch (_) {}
+  try {
+    await GoogleSignIn().signOut();
+  } catch (_) {}
+  try {
+    await FirebaseAuth.instance.signOut();
+  } catch (_) {}
+  if (!mounted) return;
+  Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(builder: (_) => const LoginScreen()),
+    (r) => false,
+  );
+ }
 
   Future<void> _contactUs() async {
     final uri = Uri(scheme: 'mailto', path: 'levelmaxing952@gmail.com');
@@ -416,44 +432,91 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _deleteAccount() async {
-    final dc = TextEditingController();
-    bool ok = false;
-    final confirm = await showDialog<bool>(context: context, barrierDismissible: false, builder: (_) => StatefulBuilder(
+  final dc = TextEditingController();
+  bool ok = false;
+  final confirm = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => StatefulBuilder(
       builder: (ctx, setD) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24), SizedBox(width: 10),
-          Text('Delete Account', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]),
+        title: const Row(children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24),
+          SizedBox(width: 10),
+          Text('Delete Account', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        ]),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('This will delete your account.', style: TextStyle(color: Colors.white, fontSize: 14)),
           const SizedBox(height: 8),
-          const Text('Your data will be permanently removed after 7 days. You will not be able to sign in again during this period.',
+          const Text(
+            'Your data will be permanently removed after 7 days. You will not be able to sign in again during this period.',
             style: TextStyle(color: Colors.white54, fontSize: 13)),
           const SizedBox(height: 12),
           const Text('Type DELETE to confirm:', style: TextStyle(color: Colors.white54, fontSize: 13)),
           const SizedBox(height: 8),
-          TextField(controller: dc, autofocus: true,
+          TextField(
+            controller: dc,
+            autofocus: true,
             style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, letterSpacing: 2),
             decoration: _editInputDeco('DELETE'),
-            onChanged: (v) => setD(() => ok = v.trim() == 'DELETE')),
+            onChanged: (v) => setD(() => ok = v.trim() == 'DELETE'),
+          ),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-          ElevatedButton(onPressed: ok ? () => Navigator.pop(ctx, true) : null,
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white,
-              disabledBackgroundColor: Colors.red.withValues(alpha:0.3),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            child: const Text('Delete Account', style: TextStyle(fontWeight: FontWeight.bold))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: ok ? () => Navigator.pop(ctx, true) : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: Colors.red.withValues(alpha: 0.3),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Delete Account', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
-    ));
-    if (confirm == true) {
-      // Soft-delete: store UID in deleted_users, mark profile, sign out
-      await DeletedUsersService.softDeleteAccount();
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
-    }
+    ),
+  );
+
+  if (confirm != true) return;
+
+  // Show loading indicator while deleting
+  if (!mounted) return;
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const Center(
+      child: CircularProgressIndicator(color: Color(0xFFFFD700)),
+    ),
+  );
+
+  try {
+    await DeletedUsersService.softDeleteAccount();
+  } catch (e) {
+    debugPrint('Delete account error: $e');
+    if (!mounted) return;
+    Navigator.pop(context); // close loading
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Failed to delete account. Please try again.'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return;
   }
+
+  if (!mounted) return;
+  Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(builder: (_) => const LoginScreen()),
+    (r) => false,
+  );
+ }
 
   @override
   Widget build(BuildContext context) {
