@@ -343,11 +343,15 @@ class _CameraScreenState extends State<CameraScreen> {
           final String? processedLeft = await processImage(_leftImage, 'left');
 
           finalImagePaths = [
-            ?processedFront,
-            ?processedRight,
-            ?processedLeft,
-          ];
-        } catch (e) {
+           if (processedFront != null) processedFront
+               else if (_frontImage != null) _frontImage!.path,
+              if (processedRight != null) processedRight
+              else if (_rightImage != null) _rightImage!.path,
+              if (processedLeft != null) processedLeft
+              else if (_leftImage != null) _leftImage!.path,
+              ].
+              whereType<String>().toList();
+              } catch (e) {
           debugPrint('Image processing error (non-fatal): $e');
         }
 
