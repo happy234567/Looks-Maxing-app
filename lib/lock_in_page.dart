@@ -523,9 +523,10 @@ class _LockInPageState extends State<LockInPage> {
   }
 
   Future<void> _loadData() async {
-    final d = await _load();
-    final challenge = await ChallengeService.loadChallenge();
-    setState(() { _data = d; _challenge = challenge; _loading = false; });
+  final d = await _load();
+  final challenge = await ChallengeService.loadChallenge();
+  if (!mounted) return;
+  setState(() { _data = d; _challenge = challenge; _loading = false; });
     _checkPremiumStreak();
 
     // Auto-show result screen if challenge completed but not yet notified

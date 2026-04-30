@@ -379,13 +379,13 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
 
   @override
   void initState() {
-    super.initState();
-    _billingService.initialize();
-    _billingService.addListener(_onBillingUpdated);
-    _refreshCooldown();
-    // Tick every second for the live countdown
-    _startTicker();
-  }
+  super.initState();
+  _billingService.addListener(_onBillingUpdated);
+  if (!_billingService.isInitialized) _billingService.initialize();
+  _refreshCooldown();
+  // Tick every second for the live countdown
+  _startTicker();
+ }
 
   void _startTicker() {
     Future.doWhile(() async {

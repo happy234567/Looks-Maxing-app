@@ -39,15 +39,17 @@ class _ProgressPageState extends State<ProgressPage>
   }
 
   Future<void> _loadHistory() async {
-    final history = await ScanHistory.getHistory();
-    setState(() {
-      _history = history;
-      _loading = false;
-    });
-    _fadeCtrl.forward();
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) _staggerCtrl.forward();
-    });
+  final history = await ScanHistory.getHistory();
+  if (!mounted) return;
+  setState(() {
+    _history = history;
+    _loading = false;
+  });
+  if (!mounted) return;
+   _fadeCtrl.forward();
+   Future.delayed(const Duration(milliseconds: 100), () {
+    if (mounted) _staggerCtrl.forward();
+   });
   }
 
   void _refresh() {
