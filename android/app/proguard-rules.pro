@@ -19,7 +19,7 @@
 -keep class com.google.android.gms.ads.** { *; }
 -dontwarn com.google.android.gms.ads.**
 
-# In-App Purchase
+# In-App Purchase — keeps BillingClient intact so ProxyBillingActivity doesn't NPE
 -keep class com.android.billingclient.** { *; }
 -dontwarn com.android.billingclient.**
 
@@ -32,11 +32,34 @@
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# Gson / JSON (used by http package)
+# ─── FIX: Gson TypeToken crash (Crashes #1 & #2) ────────────────────────────
+# R8 strips generic type signatures which breaks Gson's TypeToken.
+# flutter_local_notifications uses Gson internally — this keeps it intact.
 -keepattributes Signature
+-keepattributes EnclosingMethod
 -keep class sun.misc.Unsafe { *; }
+-keep class com.google.gson.** { *; }
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken { *; }
+-keep,allowobfuscation,allowshrinking class com.google.gson.reflect.TypeToken
+-keep,allowobfuscation,allowshrinking class * extends com.google.gson.reflect.TypeToken
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Google Play Core / Split Compat (Fixes R8 missing class errors for release builds)
+# ─── FIX: flutter_local_notifications scheduled boot receiver ─────────────────
+# Keeps the boot receiver and its internal classes so notifications survive reboot
+-keep class com.dexterous.** { *; }
+-keep class com.dexterous.flutterlocalnotifications.** { *; }
+-dontwarn com.dexterous.**
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─── FIX: Google Sign-In SignInHubActivity NPE (Crash #4) ────────────────────
+# Keeps Google Sign-In classes from being incorrectly stripped by R8
+-keep class com.google.android.gms.auth.** { *; }
+-keep class com.google.android.gms.auth.api.signin.** { *; }
+-keep class com.google.android.gms.auth.api.signin.internal.** { *; }
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Google Play Core / Split Compat
 -dontwarn com.google.android.play.core.**
 -keep class com.google.android.play.core.** { *; }
 

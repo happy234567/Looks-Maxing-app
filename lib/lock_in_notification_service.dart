@@ -139,9 +139,28 @@ class LockInNotificationService {
     await prefs.setString(_kScheduledDay, todayKey);
   }
 
+  // ─── FIX: Crash #1 — LockInNotificationService.cancelAll ────────────────
+  // The old code called _plugin.cancel() which internally calls
+  // FlutterLocalNotificationsPlugin.cancel() → loads scheduled notifications
+  // from disk using Gson TypeToken. In release builds, R8/ProGuard strips
+  // generic type signatures, causing:
+  //   PlatformException: TypeToken must be created with a type argument
+  //
+  // Fix: wrap each cancel in its own try/catch so one failure doesn't
+  // crash the whole app. The proguard-rules.pro fix is the ROOT fix;
+  // this is a safety net for any devices that still have stale data.
+  // ─────────────────────────────────────────────────────────────────────────
   static Future<void> cancelAll() async {
-    await _plugin.cancel(_reminderNotifId);
-    await _plugin.cancel(_dangerNotifId);
+    try {
+      await _plugin.cancel(_reminderNotifId);
+    } catch (e) {
+      debugPrint('[LockInNotif] cancelReminder failed (safe): $e');
+    }
+    try {
+      await _plugin.cancel(_dangerNotifId);
+    } catch (e) {
+      debugPrint('[LockInNotif] cancelDanger failed (safe): $e');
+    }
     debugPrint('Lock In notifications cancelled');
   }
 
@@ -193,16 +212,20 @@ class LockInNotificationService {
       presentSound: true,
     );
 
-    await _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      tzScheduled,
-      NotificationDetails(android: androidDetails, iOS: iosDetails),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, // exact timing
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-    );
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        tzScheduled,
+        NotificationDetails(android: androidDetails, iOS: iosDetails),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    } catch (e) {
+      debugPrint('[LockInNotif] _schedule failed (safe): $e');
+    }
   }
 
   static Future<void> showChallengeResult({required bool isEligible}) async {
