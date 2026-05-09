@@ -29,24 +29,21 @@ class ScanCooldownService {
     }
 
     const androidInit = AndroidInitializationSettings('@drawable/ic_stat_notification');
-
-    // iOS support added
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
     );
-
-    const initSettings = InitializationSettings(
-      android: androidInit,
-      iOS: iosInit,
-    );
+    const initSettings = InitializationSettings(android: androidInit, iOS: iosInit);
 
     await _plugin.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: (resp) {
-        debugPrint('Scan-ready notification tapped: ${resp.id}');
+      // ─── FIX: Tapping cooldown notification → opens Face Rating (scan) tab ──
+      onDidReceiveNotificationResponse: (NotificationResponse resp) {
+        debugPrint('Scan-ready notification tapped: ${resp.id}, payload=${resp.payload}');
+        handleNotificationNavigation(resp.payload);
       },
+      // ────────────────────────────────────────────────────────────────────────
     );
 
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -199,7 +196,12 @@ class ScanCooldownService {
     DateTime scheduledTime, {
     required bool isPremium,
   }) async {
-    await _plugin.cancel(_scanReadyNotifId);
+    // Safe cancel with try/catch (same fix as LockInNotificationService)
+    try {
+      await _plugin.cancel(_scanReadyNotifId);
+    } catch (e) {
+      debugPrint('[ScanCooldown] cancel failed (safe): $e');
+    }
 
     final tzScheduled = tz.TZDateTime.from(scheduledTime, tz.local);
     final Int64List vibration = Int64List.fromList([0, 300, 150, 300, 150, 300]);
@@ -229,7 +231,6 @@ class ScanCooldownService {
       showWhen: true,
     );
 
-    // iOS support added
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
       sound: 'default',
       presentAlert: true,
@@ -237,18 +238,22 @@ class ScanCooldownService {
       presentSound: true,
     );
 
-    await _plugin.zonedSchedule(
-      _scanReadyNotifId,
-      'Cooldown Complete ✅',
-      'Your cooldown is over. Scan your face now to get your latest face score.',
-      tzScheduled,
-      NotificationDetails(android: androidDetails, iOS: iosDetails),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-    );
-
-    debugPrint('Scan-ready notification scheduled for $scheduledTime');
+    try {
+      await _plugin.zonedSchedule(
+        _scanReadyNotifId,
+        'Cooldown Complete ✅',
+        'Your cooldown is over. Scan your face now to get your latest face score.',
+        tzScheduled,
+        NotificationDetails(android: androidDetails, iOS: iosDetails),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: 'scan', // ← tapping opens Face Rating tab
+      );
+      debugPrint('Scan-ready notification scheduled for $scheduledTime');
+    } catch (e) {
+      debugPrint('[ScanCooldown] _scheduleReadyNotification failed (safe): $e');
+    }
   }
 
   static String formatRemaining(Duration d) {

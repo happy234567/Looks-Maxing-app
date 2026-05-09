@@ -306,24 +306,41 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+   return MaterialApp(
       title: 'Level Max',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
+      navigatorKey: navigatorKey,
+      onGenerateRoute: (settings) {
+        if (settings.name == '/main') {
+          final tabIndex = settings.arguments as int? ?? 0;
+          return MaterialPageRoute(
+            builder: (_) => MainNavigation(initialTab: tabIndex),
+          );
+        }
+        return null;
+      },
       home: initialScreen,
     );
   }
 }
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
-
+  final int initialTab;
+  const MainNavigation({super.key, this.initialTab = 0});
+ 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
-
+ 
 class _MainNavigationState extends State<MainNavigation> {
-  int _currentIndex = 0;
+  late int _currentIndex;
+ 
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialTab;
+  }
 
   final List<Widget> _pages = [
     const FaceRatingPage(),

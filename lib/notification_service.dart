@@ -21,7 +21,6 @@ class NotificationService {
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@drawable/ic_stat_notification');
 
-    // iOS local notification settings — FIXED: was missing before
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -35,10 +34,13 @@ class NotificationService {
 
     await _localNotifications.initialize(
       initSettings,
+      // ─── FIX: Local notification tap → navigate to correct screen ──────────
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        debugPrint('Notification clicked: ${response.payload}');
-        // TO DO: Add navigation here if you want tapping to open a specific screen
+        debugPrint('Notification tapped: payload=${response.payload}');
+        // payload contains the screen name e.g. "scan", "lockin", "progress"
+        handleNotificationNavigation(response.payload);
       },
+      // ────────────────────────────────────────────────────────────────────────
     );
 
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -65,15 +67,38 @@ class NotificationService {
 
     await _saveTokenToFirestore();
 
+    // ─── FIX: FCM foreground message tap → navigate to correct screen ────────
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('Foreground notification: ${message.notification?.title}');
       if (message.notification != null) {
+        // Read screen from FCM data payload (what you set in Firebase Console)
+        final screen = message.data['screen'] as String?;
         showPremiumNotification(
           title: message.notification!.title ?? 'Level Max Up! 🚀',
           body: message.notification!.body ?? 'Check your latest scan results now.',
+          payload: screen, // passed through to onDidReceiveNotificationResponse
         );
       }
     });
+
+    // App was in BACKGROUND and user tapped notification
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      debugPrint('Notification opened app from background: ${message.data}');
+      final screen = message.data['screen'] as String?;
+      handleNotificationNavigation(screen);
+    });
+
+    // App was TERMINATED (killed) and user tapped notification to open app
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      debugPrint('App opened from terminated state via notification');
+      final screen = initialMessage.data['screen'] as String?;
+      // Small delay to let the app finish building before navigating
+      Future.delayed(const Duration(milliseconds: 500), () {
+        handleNotificationNavigation(screen);
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
       _saveTokenToFirestoreWithToken(newToken);
@@ -83,7 +108,7 @@ class NotificationService {
   static Future<void> showPremiumNotification({
     required String title,
     required String body,
-    String? payload,
+    String? payload, // ← screen name e.g. "scan", "lockin"
   }) async {
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'high_importance_channel',
@@ -113,7 +138,6 @@ class NotificationService {
       autoCancel: true,
     );
 
-    // iOS details — FIXED: was missing before
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
       sound: 'default',
       presentAlert: true,
@@ -123,7 +147,7 @@ class NotificationService {
 
     final NotificationDetails details = NotificationDetails(
       android: androidDetails,
-      iOS: iosDetails,        // FIXED: iOS now gets the notification
+      iOS: iosDetails,
     );
 
     await _localNotifications.show(
@@ -131,7 +155,7 @@ class NotificationService {
       title,
       body,
       details,
-      payload: payload,
+      payload: payload, // ← this is what gets passed to onDidReceiveNotificationResponse
     );
   }
 

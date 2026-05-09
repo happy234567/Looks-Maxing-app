@@ -7,14 +7,6 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_plugin.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LOCK IN NOTIFICATION SERVICE
-// Sends 2 automatic daily notifications:
-//   1. 8 PM  — gentle reminder
-//   2. 11 PM — 1 hour left danger alert
-// Both are cancelled automatically when user completes the day.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class LockInNotificationService {
   static final FlutterLocalNotificationsPlugin _plugin = sharedNotificationsPlugin;
 
@@ -23,36 +15,30 @@ class LockInNotificationService {
   static const String _kScheduledDay = 'notif_scheduled_day';
 
   static Future<void> initialize() async {
-    // Initialize timezone data using the real device timezone
     tzdata.initializeTimeZones();
     try {
       final locationName = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(locationName));
-      debugPrint('[LockInNotif] Timezone set to: $locationName');
     } catch (e) {
-      debugPrint('[LockInNotif] Failed to set timezone, using UTC: $e');
+      debugPrint('[LockInNotif] Failed to set timezone: $e');
     }
 
     const androidInit = AndroidInitializationSettings('@drawable/ic_stat_notification');
-
-    // iOS support added
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
     );
-
-    const initSettings = InitializationSettings(
-      android: androidInit,
-      iOS: iosInit,
-    );
+    const initSettings = InitializationSettings(android: androidInit, iOS: iosInit);
 
     await _plugin.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: _onNotificationTap,
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        debugPrint('Lock In notification tapped: id=${response.id}, payload=${response.payload}');
+        handleNotificationNavigation(response.payload);
+      },
     );
 
-    // Android channel: daily lock-in reminders
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'lock_in_channel_v2',
       'Lock In Reminders',
@@ -61,12 +47,10 @@ class LockInNotificationService {
       playSound: true,
       enableVibration: true,
     );
-
     await _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
-    // Android channel: challenge results
     const AndroidNotificationChannel challengeChannel = AndroidNotificationChannel(
       'challenge_result_channel',
       'Challenge Results',
@@ -75,20 +59,13 @@ class LockInNotificationService {
       playSound: true,
       enableVibration: true,
     );
-
     await _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(challengeChannel);
 
-    // Request permission on Android 13+
     await _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
-  }
-
-  static void _onNotificationTap(NotificationResponse response) {
-    debugPrint('Lock In notification tapped: id=${response.id}');
-    // TO DO: Add navigation here if you want tapping to open a specific screen
   }
 
   static Future<void> scheduleTodayNotifications({
@@ -103,12 +80,10 @@ class LockInNotificationService {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
     final todayKey = '${now.year}-${now.month}-${now.day}';
-
     if (prefs.getString(_kScheduledDay) == todayKey) return;
 
     await cancelAll();
 
-    // 8 PM reminder
     final eightPM = DateTime(now.year, now.month, now.day, 20, 0, 0);
     if (now.isBefore(eightPM)) {
       await _schedule(
@@ -118,11 +93,10 @@ class LockInNotificationService {
         bigText: 'You didn\'t complete your Day $dayNumber task. Complete it now to maintain your streak.',
         scheduledTime: eightPM,
         isDanger: false,
+        payload: 'lockin',
       );
-      debugPrint('Scheduled 8PM reminder for day $dayNumber');
     }
 
-    // 11 PM danger alert
     final elevenPM = DateTime(now.year, now.month, now.day, 23, 0, 0);
     if (now.isBefore(elevenPM)) {
       await _schedule(
@@ -132,24 +106,13 @@ class LockInNotificationService {
         bigText: 'Day $dayNumber is almost over! You only have 1 hour left to complete your tasks. Don\'t let your streak die — open the app and finish strong! 💪',
         scheduledTime: elevenPM,
         isDanger: true,
+        payload: 'lockin',
       );
-      debugPrint('Scheduled 11PM danger alert for day $dayNumber');
     }
 
     await prefs.setString(_kScheduledDay, todayKey);
   }
 
-  // ─── FIX: Crash #1 — LockInNotificationService.cancelAll ────────────────
-  // The old code called _plugin.cancel() which internally calls
-  // FlutterLocalNotificationsPlugin.cancel() → loads scheduled notifications
-  // from disk using Gson TypeToken. In release builds, R8/ProGuard strips
-  // generic type signatures, causing:
-  //   PlatformException: TypeToken must be created with a type argument
-  //
-  // Fix: wrap each cancel in its own try/catch so one failure doesn't
-  // crash the whole app. The proguard-rules.pro fix is the ROOT fix;
-  // this is a safety net for any devices that still have stale data.
-  // ─────────────────────────────────────────────────────────────────────────
   static Future<void> cancelAll() async {
     try {
       await _plugin.cancel(_reminderNotifId);
@@ -171,6 +134,7 @@ class LockInNotificationService {
     required String bigText,
     required DateTime scheduledTime,
     required bool isDanger,
+    required String payload,
   }) async {
     final tzScheduled = tz.TZDateTime.from(scheduledTime, tz.local);
 
@@ -204,7 +168,6 @@ class LockInNotificationService {
       showWhen: true,
     );
 
-    // iOS details
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
       sound: 'default',
       presentAlert: true,
@@ -222,6 +185,7 @@ class LockInNotificationService {
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
+        payload: payload,
       );
     } catch (e) {
       debugPrint('[LockInNotif] _schedule failed (safe): $e');
@@ -229,7 +193,6 @@ class LockInNotificationService {
   }
 
   static Future<void> showChallengeResult({required bool isEligible}) async {
-    debugPrint('[ChallengeNotif] Firing notification: isEligible=$isEligible');
     final title = isEligible ? '🎉 You Made It!' : 'Almost There 😔';
     final body = isEligible
         ? 'You completed the challenge and entered the giveaway! We\'ll notify you if you win.'
@@ -272,8 +235,8 @@ class LockInNotificationService {
         title,
         body,
         NotificationDetails(android: androidDetails, iOS: iosDetails),
+        payload: 'lockin',
       );
-      debugPrint('[ChallengeNotif] Notification fired successfully');
     } catch (e) {
       debugPrint('[ChallengeNotif] ERROR firing notification: $e');
     }
