@@ -8,7 +8,7 @@ environment:
 
 dependencies:
   flutter:
-    sdk: flutter
+  sdk: flutter
   cupertino_icons: ^1.0.8
   camera: ^0.10.5+9
   permission_handler: ^11.3.0
@@ -24,6 +24,7 @@ dependencies:
   in_app_purchase: ^3.2.3
   firebase_messaging: ^15.1.0
   flutter_local_notifications: ^17.2.2
+  workmanager: ^0.5.2
   timezone: ^0.9.4
   firebase_crashlytics: ^4.3.10
   in_app_purchase_android: ^0.4.0+10
@@ -33,11 +34,10 @@ dependencies:
   cached_network_image: ^3.3.1
   flutter_svg: ^2.0.9
   flutter_windowmanager:
-    path: local_plugins/flutter_windowmanager
+  path: local_plugins/flutter_windowmanager
   screen_capture_event: ^1.2.0
   google_mobile_ads: ^5.1.0
   flutter_timezone: ^3.0.0
-
 
 dev_dependencies:
   flutter_test:
