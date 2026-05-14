@@ -5,7 +5,81 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workmanager/workmanager.dart';
 import 'notification_plugin.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BACKGROUND TASK — runs every day even when the app is closed.
+// WorkManager calls this function in an isolate (separate process).
+// It reads the saved day number + completion rate from SharedPreferences
+// and schedules the 8 PM / 11 PM notifications for that day.
+// ─────────────────────────────────────────────────────────────────────────────
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((taskName, inputData) async {
+    if (taskName != LockInNotificationService.kDailyTaskName) return true;
+
+    try {
+      // Re-initialise timezone in this isolate (no Flutter engine here)
+      tzdata.initializeTimeZones();
+      try {
+        final locationName = await FlutterTimezone.getLocalTimezone();
+        tz.setLocalLocation(tz.getLocation(locationName));
+      } catch (_) {}
+
+      // Initialise the local-notifications plugin in this isolate
+      const androidInit = AndroidInitializationSettings('@drawable/ic_stat_notification');
+      const initSettings = InitializationSettings(android: androidInit);
+      await sharedNotificationsPlugin.initialize(initSettings);
+
+      // Create the notification channels (safe to call even if they exist)
+      await sharedNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(const AndroidNotificationChannel(
+            'lock_in_channel_v2',
+            'Lock In Reminders',
+            description: 'Daily reminders to complete your Lock In tasks',
+            importance: Importance.high,
+            playSound: true,
+            enableVibration: true,
+          ));
+
+      // Read saved state from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+
+      // Compute dayNumber dynamically from startDate so it's always
+      // correct even if the user hasn't opened the app in several days.
+      final startDateStr = prefs.getString(LockInNotificationService.kPrefStartDate);
+      int dayNumber;
+      if (startDateStr != null) {
+        final startDate = DateTime.parse(startDateStr);
+        final today = DateTime.now();
+        dayNumber = DateTime(today.year, today.month, today.day)
+            .difference(DateTime(startDate.year, startDate.month, startDate.day))
+            .inDays + 1;
+      } else {
+        dayNumber = prefs.getInt(LockInNotificationService.kPrefDayNumber) ?? 1;
+      }
+
+      // IMPORTANT: Always assume 0% completion in the background task.
+      // The user hasn't opened the app today, so no tasks have been
+      // checked off. Reading the stored value would use *yesterday's*
+      // rate — if it was 1.0 we'd call cancelAll() and never notify.
+      const double completionRate = 0.0;
+
+      // Schedule the 8 PM / 11 PM notifications for today
+      await LockInNotificationService._scheduleInternal(
+        dayNumber: dayNumber,
+        completionRate: completionRate,
+        forceReschedule: true, // Background task always reschedules for today
+      );
+    } catch (e) {
+      debugPrint('[WorkManager] LockIn background task failed: $e');
+    }
+
+    return true; // Always return true so WorkManager doesn't retry forever
+  });
+}
 
 class LockInNotificationService {
   static final FlutterLocalNotificationsPlugin _plugin = sharedNotificationsPlugin;
@@ -14,6 +88,13 @@ class LockInNotificationService {
   static const int _dangerNotifId   = 1002;
   static const String _kScheduledDay = 'notif_scheduled_day';
 
+  // Keys used to share state with the background isolate
+  static const String kPrefDayNumber      = 'lockin_notif_day_number';
+  static const String kPrefCompletionRate = 'lockin_notif_completion_rate';
+  static const String kPrefStartDate     = 'lockin_notif_start_date';
+  static const String kDailyTaskName      = 'lockin_daily_notif_task';
+
+  // ── Initialize ─────────────────────────────────────────────────────────────
   static Future<void> initialize() async {
     tzdata.initializeTimeZones();
     try {
@@ -66,12 +147,65 @@ class LockInNotificationService {
     await _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+
+    // ── Register WorkManager background task ─────────────────────────────────
+    // This runs once a day at ~6 AM and reschedules the 8 PM / 11 PM
+    // notifications WITHOUT the user needing to open the app.
+    await Workmanager().initialize(
+      callbackDispatcher,
+      isInDebugMode: false,
+    );
+
+    await Workmanager().registerPeriodicTask(
+      kDailyTaskName,        // unique task name
+      kDailyTaskName,        // task tag (same name is fine)
+      frequency: const Duration(hours: 24),
+      initialDelay: _delayUntil6AM(),
+      constraints: Constraints(
+        networkType: NetworkType.not_required, // no internet needed
+      ),
+      existingWorkPolicy: ExistingWorkPolicy.keep,
+    );
+
+    debugPrint('[LockInNotif] WorkManager daily task registered');
   }
 
+  // ── How long until 6 AM tomorrow? ──────────────────────────────────────────
+  static Duration _delayUntil6AM() {
+    final now = DateTime.now();
+    var next6AM = DateTime(now.year, now.month, now.day, 6, 0, 0);
+    if (now.isAfter(next6AM)) {
+      next6AM = next6AM.add(const Duration(days: 1));
+    }
+    return next6AM.difference(now);
+  }
+
+  // ── Public entry point called from LockInPage ───────────────────────────────
   static Future<void> scheduleTodayNotifications({
     required int dayNumber,
     required double completionRate,
+    required DateTime startDate,
   }) async {
+    // Save state so the background isolate can read it later
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(kPrefDayNumber, dayNumber);
+    await prefs.setDouble(kPrefCompletionRate, completionRate);
+    await prefs.setString(kPrefStartDate, startDate.toIso8601String());
+
+    await _scheduleInternal(
+      dayNumber: dayNumber,
+      completionRate: completionRate,
+      forceReschedule: false,
+    );
+  }
+
+  // ── Internal scheduling logic (used by both foreground and background) ──────
+  static Future<void> _scheduleInternal({
+    required int dayNumber,
+    required double completionRate,
+    required bool forceReschedule,
+  }) async {
+    // If tasks are all done, cancel and exit
     if (completionRate >= 1.0) {
       await cancelAll();
       return;
@@ -80,7 +214,11 @@ class LockInNotificationService {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
     final todayKey = '${now.year}-${now.month}-${now.day}';
-    if (prefs.getString(_kScheduledDay) == todayKey) return;
+
+    // Skip if already scheduled today — UNLESS we're forcing a reschedule
+    // (the background task always forces, so it stays correct even if the
+    // user already opened the app once today)
+    if (!forceReschedule && prefs.getString(_kScheduledDay) == todayKey) return;
 
     await cancelAll();
 
@@ -111,8 +249,10 @@ class LockInNotificationService {
     }
 
     await prefs.setString(_kScheduledDay, todayKey);
+    debugPrint('[LockInNotif] Notifications scheduled for $todayKey (day $dayNumber)');
   }
 
+  // ── Cancel both notifications ───────────────────────────────────────────────
   static Future<void> cancelAll() async {
     try {
       await _plugin.cancel(_reminderNotifId);
@@ -127,6 +267,7 @@ class LockInNotificationService {
     debugPrint('Lock In notifications cancelled');
   }
 
+  // ── Low-level scheduler ─────────────────────────────────────────────────────
   static Future<void> _schedule({
     required int id,
     required String title,
@@ -187,11 +328,13 @@ class LockInNotificationService {
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: payload,
       );
+      debugPrint('[LockInNotif] Scheduled "$title" at $scheduledTime');
     } catch (e) {
       debugPrint('[LockInNotif] _schedule failed (safe): $e');
     }
   }
 
+  // ── Challenge result notification (unchanged) ───────────────────────────────
   static Future<void> showChallengeResult({required bool isEligible}) async {
     final title = isEligible ? '🎉 You Made It!' : 'Almost There 😔';
     final body = isEligible

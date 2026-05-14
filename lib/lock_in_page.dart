@@ -561,6 +561,7 @@ class _LockInPageState extends State<LockInPage> {
       await LockInNotificationService.scheduleTodayNotifications(
         dayNumber: currentDay,
         completionRate: rate,
+        startDate: d.startDate,
       );
     }
   }
