@@ -8,7 +8,7 @@ environment:
 
 dependencies:
   flutter:
-  sdk: flutter
+    sdk: flutter
   cupertino_icons: ^1.0.8
   camera: ^0.10.5+9
   permission_handler: ^11.3.0
@@ -34,7 +34,7 @@ dependencies:
   cached_network_image: ^3.3.1
   flutter_svg: ^2.0.9
   flutter_windowmanager:
-  path: local_plugins/flutter_windowmanager
+    path: local_plugins/flutter_windowmanager
   screen_capture_event: ^1.2.0
   google_mobile_ads: ^5.1.0
   flutter_timezone: ^3.0.0
