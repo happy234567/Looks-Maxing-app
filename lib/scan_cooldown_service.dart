@@ -75,6 +75,15 @@ class ScanCooldownService {
     }
   }
 
+  static Future<void> cancelNotification() async {
+    try {
+      await _plugin.cancel(_scanReadyNotifId);
+      debugPrint('[ScanCooldown] Cancelled scheduled notification');
+    } catch (e) {
+      debugPrint('[ScanCooldown] Failed to cancel notification: $e');
+    }
+  }
+
   static Future<void> syncFromFirestore() async {
     try {
       final user = FirebaseAuth.instance.currentUser;

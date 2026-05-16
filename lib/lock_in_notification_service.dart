@@ -9,14 +9,16 @@ import 'package:workmanager/workmanager.dart';
 import 'notification_plugin.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BACKGROUND TASK — runs every day even when the app is closed.
-// WorkManager calls this function in an isolate (separate process).
-// It reads the saved day number + completion rate from SharedPreferences
-// and schedules the 8 PM / 11 PM notifications for that day.
+// BACKGROUND TASK — runs every ~24 hours even when the app is fully closed.
+// WorkManager uses Android's JobScheduler (NOT AlarmManager / exact alarms).
+// It reads the saved startDate from SharedPreferences, computes the current
+// day number, and schedules the 8 PM / 11 PM notifications for that day.
+// This ensures the user gets streak reminders even if they never open the app.
 // ─────────────────────────────────────────────────────────────────────────────
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
+    WidgetsFlutterBinding.ensureInitialized();
     if (taskName != LockInNotificationService.kDailyTaskName) return true;
 
     try {
@@ -47,31 +49,31 @@ void callbackDispatcher() {
       // Read saved state from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
 
-      // Compute dayNumber dynamically from startDate so it's always
-      // correct even if the user hasn't opened the app in several days.
+      // If no startDate was saved, the user never started Lock In — skip.
       final startDateStr = prefs.getString(LockInNotificationService.kPrefStartDate);
-      int dayNumber;
-      if (startDateStr != null) {
-        final startDate = DateTime.parse(startDateStr);
-        final today = DateTime.now();
-        dayNumber = DateTime(today.year, today.month, today.day)
-            .difference(DateTime(startDate.year, startDate.month, startDate.day))
-            .inDays + 1;
-      } else {
-        dayNumber = prefs.getInt(LockInNotificationService.kPrefDayNumber) ?? 1;
+      if (startDateStr == null) return true;
+
+      // Compute dayNumber dynamically from startDate so it's always
+      // correct even if the user hasn't opened the app in months.
+      final startDate = DateTime.parse(startDateStr);
+      final today = DateTime.now();
+      final dayNumber = DateTime(today.year, today.month, today.day)
+          .difference(DateTime(startDate.year, startDate.month, startDate.day))
+          .inDays + 1;
+
+      // Check if user already completed tasks today
+      final lastCompletedDate = prefs.getString(LockInNotificationService.kPrefLastCompletedDate);
+      final todayStr = today.toIso8601String().substring(0, 10);
+      
+      double completionRate = 0.0;
+      if (lastCompletedDate == todayStr) {
+        completionRate = 1.0;
       }
 
-      // IMPORTANT: Always assume 0% completion in the background task.
-      // The user hasn't opened the app today, so no tasks have been
-      // checked off. Reading the stored value would use *yesterday's*
-      // rate — if it was 1.0 we'd call cancelAll() and never notify.
-      const double completionRate = 0.0;
-
       // Schedule the 8 PM / 11 PM notifications for today
-      await LockInNotificationService._scheduleInternal(
+      await LockInNotificationService._scheduleForDay(
         dayNumber: dayNumber,
         completionRate: completionRate,
-        forceReschedule: true, // Background task always reschedules for today
       );
     } catch (e) {
       debugPrint('[WorkManager] LockIn background task failed: $e');
@@ -86,13 +88,11 @@ class LockInNotificationService {
 
   static const int _reminderNotifId = 1001;
   static const int _dangerNotifId   = 1002;
-  static const String _kScheduledDay = 'notif_scheduled_day';
 
-  // Keys used to share state with the background isolate
-  static const String kPrefDayNumber      = 'lockin_notif_day_number';
-  static const String kPrefCompletionRate = 'lockin_notif_completion_rate';
-  static const String kPrefStartDate     = 'lockin_notif_start_date';
-  static const String kDailyTaskName      = 'lockin_daily_notif_task';
+  // Key to store the startDate so background task can compute day numbers
+  static const String kPrefStartDate = 'lockin_notif_start_date';
+  static const String kPrefLastCompletedDate = 'lockin_last_completed_date';
+  static const String kDailyTaskName = 'lockin_daily_notif_task';
 
   // ── Initialize ─────────────────────────────────────────────────────────────
   static Future<void> initialize() async {
@@ -149,22 +149,24 @@ class LockInNotificationService {
         ?.requestNotificationsPermission();
 
     // ── Register WorkManager background task ─────────────────────────────────
-    // This runs once a day at ~6 AM and reschedules the 8 PM / 11 PM
-    // notifications WITHOUT the user needing to open the app.
+    // WorkManager uses Android's JobScheduler — NOT alarms.
+    // This runs once every ~24 hours and schedules the 8 PM / 11 PM
+    // notifications WITHOUT the user needing to open the app — forever.
     await Workmanager().initialize(
       callbackDispatcher,
-      isInDebugMode: false,
     );
 
+    // ExistingWorkPolicy.keep ensures this task is only registered ONCE
+    // and is NOT reset every time the app opens.
     await Workmanager().registerPeriodicTask(
       kDailyTaskName,        // unique task name
       kDailyTaskName,        // task tag (same name is fine)
       frequency: const Duration(hours: 24),
       initialDelay: _delayUntil6AM(),
       constraints: Constraints(
-        networkType: NetworkType.not_required, // no internet needed
+        networkType: NetworkType.notRequired, // no internet needed
       ),
-      existingWorkPolicy: ExistingWorkPolicy.keep,
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
     );
 
     debugPrint('[LockInNotif] WorkManager daily task registered');
@@ -181,29 +183,36 @@ class LockInNotificationService {
   }
 
   // ── Public entry point called from LockInPage ───────────────────────────────
+  /// Called when the user opens the Lock In page.
+  /// Saves the startDate for the background task and schedules today's
+  /// notifications based on the real completion rate.
   static Future<void> scheduleTodayNotifications({
     required int dayNumber,
     required double completionRate,
     required DateTime startDate,
   }) async {
-    // Save state so the background isolate can read it later
+    // Save startDate so the background task can compute day numbers forever
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(kPrefDayNumber, dayNumber);
-    await prefs.setDouble(kPrefCompletionRate, completionRate);
     await prefs.setString(kPrefStartDate, startDate.toIso8601String());
 
-    await _scheduleInternal(
+    if (completionRate >= 1.0) {
+      await prefs.setString(kPrefLastCompletedDate, DateTime.now().toIso8601String().substring(0, 10));
+    } else {
+      await prefs.remove(kPrefLastCompletedDate);
+    }
+
+    await _scheduleForDay(
       dayNumber: dayNumber,
       completionRate: completionRate,
-      forceReschedule: false,
     );
   }
 
-  // ── Internal scheduling logic (used by both foreground and background) ──────
-  static Future<void> _scheduleInternal({
+  // ── Internal scheduling for a single day ────────────────────────────────────
+  /// Schedules the 8 PM and 11 PM notifications for today.
+  /// If [completionRate] >= 1.0, cancels instead.
+  static Future<void> _scheduleForDay({
     required int dayNumber,
     required double completionRate,
-    required bool forceReschedule,
   }) async {
     // If tasks are all done, cancel and exit
     if (completionRate >= 1.0) {
@@ -211,16 +220,10 @@ class LockInNotificationService {
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final now = DateTime.now();
-    final todayKey = '${now.year}-${now.month}-${now.day}';
-
-    // Skip if already scheduled today — UNLESS we're forcing a reschedule
-    // (the background task always forces, so it stays correct even if the
-    // user already opened the app once today)
-    if (!forceReschedule && prefs.getString(_kScheduledDay) == todayKey) return;
-
+    // Cancel any existing notifications before scheduling new ones
     await cancelAll();
+
+    final now = DateTime.now();
 
     final eightPM = DateTime(now.year, now.month, now.day, 20, 0, 0);
     if (now.isBefore(eightPM)) {
@@ -248,8 +251,7 @@ class LockInNotificationService {
       );
     }
 
-    await prefs.setString(_kScheduledDay, todayKey);
-    debugPrint('[LockInNotif] Notifications scheduled for $todayKey (day $dayNumber)');
+    debugPrint('[LockInNotif] Notifications scheduled for today (day $dayNumber)');
   }
 
   // ── Cancel both notifications ───────────────────────────────────────────────

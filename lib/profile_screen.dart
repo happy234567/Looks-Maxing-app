@@ -392,6 +392,9 @@ class _ProfilePageState extends State<ProfilePage> {
   try {
     await NotificationService.removeTokenOnLogout();
   } catch (_) {}
+  try {
+    await ScanCooldownService.cancelNotification();
+  } catch (_) {}
   BillingService().clearPremiumState();
   AdService().clearOnSignOut();
   try {
@@ -497,6 +500,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   try {
     await DeletedUsersService.softDeleteAccount();
+    try { await LockInNotificationService.cancelAll(); } catch (_) {}
+    try { await ScanCooldownService.cancelNotification(); } catch (_) {}
+    try { await NotificationService.removeTokenOnLogout(); } catch (_) {}
   } catch (e) {
     debugPrint('Delete account error: $e');
     if (!mounted) return;
