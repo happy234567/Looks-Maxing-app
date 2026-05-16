@@ -12,6 +12,7 @@ import 'deleted_users_service.dart';
 import 'scan_cooldown_service.dart';
 import 'lock_in_notification_service.dart';
 import 'ad_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -549,10 +550,27 @@ class _ProfilePageState extends State<ProfilePage> {
               Container(
                 decoration: BoxDecoration(shape: BoxShape.circle,
                   boxShadow: [BoxShadow(color: const Color(0xFFFFD700).withValues(alpha:0.3), blurRadius: 20, spreadRadius: 2)]),
-                child: CircleAvatar(radius: 52, backgroundColor: const Color(0xFFFFD700),
-                  backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
-                  child: user?.photoURL == null ? Text(_firstName.isNotEmpty ? _firstName[0].toUpperCase() : '?',
-                    style: const TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.black)) : null),
+                child: CircleAvatar(
+  radius: 52,
+  backgroundColor: const Color(0xFFFFD700),
+  backgroundImage: null,
+  child: user?.photoURL != null
+      ? ClipOval(
+          child: CachedNetworkImage(
+            imageUrl: user!.photoURL!,
+            width: 104, height: 104, fit: BoxFit.cover,
+            placeholder: (_, _) => Text(
+              _firstName.isNotEmpty ? _firstName[0].toUpperCase() : '?',
+              style: const TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.black)),
+            errorWidget: (_, _, _) => Text(
+              _firstName.isNotEmpty ? _firstName[0].toUpperCase() : '?',
+              style: const TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.black)),
+          ),
+        )
+      : Text(
+          _firstName.isNotEmpty ? _firstName[0].toUpperCase() : '?',
+          style: const TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.black)),
+),
               ),
               const SizedBox(height: 16),
               Text(_username, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),

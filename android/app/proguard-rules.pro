@@ -55,8 +55,14 @@
 # ─── FIX: Google Sign-In SignInHubActivity NPE (Crash #4) ────────────────────
 # Keeps Google Sign-In classes from being incorrectly stripped by R8
 -keep class com.google.android.gms.auth.** { *; }
+-keepnames class com.google.android.gms.auth.** { *; }
 -keep class com.google.android.gms.auth.api.signin.** { *; }
+-keepnames class com.google.android.gms.auth.api.signin.** { *; }
 -keep class com.google.android.gms.auth.api.signin.internal.** { *; }
+-keepnames class com.google.android.gms.auth.api.signin.internal.** { *; }
+-keep class com.google.android.gms.common.api.** { *; }
+-keepnames class com.google.android.gms.common.api.** { *; }
+-keep class com.google.android.gms.auth.api.signin.internal.SignInHubActivity { *; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Google Play Core / Split Compat

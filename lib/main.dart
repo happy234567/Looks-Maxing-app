@@ -22,6 +22,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'ad_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 void main() {
   runZonedGuarded(() async {
@@ -728,15 +729,18 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               child: CircleAvatar(
                 radius: 18,
                 backgroundColor: const Color.fromRGBO(255, 215, 0, 1),
-                backgroundImage:
-                    FirebaseAuth.instance.currentUser?.photoURL != null
-                        ? NetworkImage(
-                            FirebaseAuth.instance.currentUser!.photoURL!)
-                        : null,
-                child: FirebaseAuth.instance.currentUser?.photoURL == null
-                    ? const Icon(Icons.person, color: Colors.black, size: 20)
-                    : null,
-              ),
+                backgroundImage: null,
+                child: FirebaseAuth.instance.currentUser?.photoURL != null
+                ? ClipOval(
+                  child: CachedNetworkImage(
+                    imageUrl: FirebaseAuth.instance.currentUser!.photoURL!,
+                    width: 36, height: 36, fit: BoxFit.cover,
+                    placeholder: (_, _) => const Icon(Icons.person, color: Colors.black, size: 20),
+                    errorWidget: (_, _, _) => const Icon(Icons.person, color: Colors.black, size: 20),
+                    ),
+                    )
+                    : const Icon(Icons.person, color: Colors.black, size: 20),
+                    ),
             ),
           ),
         ],
