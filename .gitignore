@@ -47,3 +47,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Gradle temp/cache (redirected to project dir for disk space)
+.gradle_tmp/
+.gradle_home/

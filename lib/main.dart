@@ -621,7 +621,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
 
   Widget _buildCooldownBar() {
     final isPremium = _billingService.isPremium;
-    final cooldownLabel = isPremium ? '3-day cooldown' : '30-day cooldown';
+    final _ = isPremium ? '3-day cooldown' : '30-day cooldown';
     final barColor = isPremium ? const Color(0xFFFFD700) : const Color(0xFF4FC3F7);
 
     return Container(
