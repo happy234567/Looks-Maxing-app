@@ -622,83 +622,105 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
   Widget _buildCooldownBar() {
     final isPremium = _billingService.isPremium;
     final cooldownLabel = isPremium ? '3-day cooldown' : '30-day cooldown';
-    final barColor =
-        isPremium ? const Color(0xFFFFD700) : const Color(0xFF4FC3F7);
+    final barColor = isPremium ? const Color(0xFFFFD700) : const Color(0xFF4FC3F7);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-      padding: const EdgeInsets.all(18),
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF111111),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: barColor.withValues(alpha:0.3)),
+        color: const Color(0xFF161616),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.timer_outlined, color: barColor, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'Next Scan — $cooldownLabel',
-                style: TextStyle(
-                    color: barColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: barColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.timer_outlined, color: barColor, size: 20),
               ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Next Scan Available In',
+                      style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      ScanCooldownService.formatRemaining(_remaining),
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: barColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: barColor.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  '${(_cooldownProgress * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(color: barColor, fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              )
             ],
           ),
-          const SizedBox(height: 12),
-          // Progress bar
+          const SizedBox(height: 20),
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
               value: _cooldownProgress.clamp(0.0, 1.0),
-              minHeight: 10,
-              backgroundColor: Colors.white12,
+              minHeight: 8,
+              backgroundColor: const Color(0xFF222222),
               valueColor: AlwaysStoppedAnimation(barColor),
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                ScanCooldownService.formatRemaining(_remaining),
-                style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600),
-              ),
-              Text(
-                '${(_cooldownProgress * 100).toStringAsFixed(0)}%',
-                style: TextStyle(color: barColor, fontSize: 13),
-              ),
-            ],
-          ),
           if (!isPremium) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 20),
             GestureDetector(
               onTap: _showPremiumBottomSheet,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFD700).withValues(alpha:0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: const Color(0xFFFFD700).withValues(alpha:0.4)),
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFFFFD700).withValues(alpha: 0.15),
+                      const Color(0xFFFFD700).withValues(alpha: 0.05),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.3)),
                 ),
                 child: const Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.workspace_premium,
-                        color: Color(0xFFFFD700), size: 14),
-                    SizedBox(width: 6),
-                    Text('Upgrade for 3-day cooldown',
-                        style: TextStyle(
-                            color: Color(0xFFFFD700), fontSize: 12)),
+                    Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Upgrade for 3-day cooldown',
+                      style: TextStyle(color: Color(0xFFFFD700), fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
                   ],
                 ),
               ),
@@ -714,116 +736,155 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF111111),
-        title: const Text('Face Rating',
-            style: TextStyle(color: Color(0xFFFFD700))),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('Face Rating', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w800, letterSpacing: -0.5)),
         centerTitle: true,
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.only(right: 20),
             child: GestureDetector(
               onTap: () {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const ProfilePage()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilePage()));
               },
-              child: CircleAvatar(
-                radius: 18,
-                backgroundColor: const Color.fromRGBO(255, 215, 0, 1),
-                backgroundImage: null,
-                child: FirebaseAuth.instance.currentUser?.photoURL != null
-                ? ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl: FirebaseAuth.instance.currentUser!.photoURL!,
-                    width: 36, height: 36, fit: BoxFit.cover,
-                    placeholder: (_, _) => const Icon(Icons.person, color: Colors.black, size: 20),
-                    errorWidget: (_, _, _) => const Icon(Icons.person, color: Colors.black, size: 20),
-                    ),
-                    )
-                    : const Icon(Icons.person, color: Colors.black, size: 20),
-                    ),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.5), width: 2),
+                  boxShadow: [
+                    BoxShadow(color: const Color(0xFFFFD700).withValues(alpha: 0.2), blurRadius: 10),
+                  ],
+                ),
+                child: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: const Color(0xFF161616),
+                  child: FirebaseAuth.instance.currentUser?.photoURL != null
+                      ? ClipOval(
+                          child: CachedNetworkImage(
+                            imageUrl: FirebaseAuth.instance.currentUser!.photoURL!,
+                            width: 32, height: 32, fit: BoxFit.cover,
+                            placeholder: (_, _) => const Icon(Icons.person, color: Colors.white54, size: 18),
+                            errorWidget: (_, _, _) => const Icon(Icons.person, color: Colors.white54, size: 18),
+                          ),
+                        )
+                      : const Icon(Icons.person, color: Colors.white54, size: 18),
+                ),
+              ),
             ),
           ),
         ],
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 40),
-              const Icon(Icons.face, color: Color(0xFFFFD700), size: 120),
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
+              
+              // Premium Glowing Icon
+              Container(
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700).withValues(alpha: 0.05),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.15), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFFD700).withValues(alpha: 0.1),
+                      blurRadius: 50,
+                      spreadRadius: 10,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.face_retouching_natural_rounded, color: Color(0xFFFFD700), size: 90),
+              ),
+              
+              const SizedBox(height: 32),
+              
               const Text('Scan Your Face',
                   style: TextStyle(
                       color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-              Text(
-                _billingService.isPremium
-                    ? 'Premium: 1 scan every 3 days'
-                    : 'Free: 1 scan every 30 days',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white54, fontSize: 14),
-              ),
-              const SizedBox(height: 36),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: (_canScan && _cooldownLoaded)
-                      ? () async {
-                          await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const CameraScreen()));
-                          await _refreshCooldown();
-                        }
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFFD700),
-                    foregroundColor: Colors.black,
-                    disabledBackgroundColor:
-                        const Color(0xFFFFD700).withValues(alpha:0.3),
-                    disabledForegroundColor: Colors.black45,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30)),
-                  ),
-                  child: Text(
-                    _canScan ? 'SCAN FACE' : 'SCAN LOCKED',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 28),
-
-              // Show countdown bar only when locked
-              if (!_canScan) _buildCooldownBar(),
-
-              if (_canScan)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 20),
-                  child: Text(
-                    'Your scan is ready! Tap above to analyse your face.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white38, fontSize: 13),
-                  ),
-                ),
-
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1.0)),
               const SizedBox(height: 8),
-
-              // ── Two Action Bars ─────────────────────────────────────────
-              _buildActionBar(
-                icon: Icons.support_agent_rounded,
-                label: 'Ask Coach',
-                subtitle: 'Get personalised advice',
-                iconColor: const Color(0xFF9C6FFF),
-                borderColor: const Color(0xFF9C6FFF),
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const AskCoachPage())),
+              
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161616),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _billingService.isPremium ? Icons.workspace_premium : Icons.stars_rounded,
+                      color: _billingService.isPremium ? const Color(0xFFFFD700) : Colors.white54,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _billingService.isPremium ? 'Premium: 1 scan every 3 days' : 'Free: 1 scan every 30 days',
+                      style: TextStyle(
+                        color: _billingService.isPremium ? const Color(0xFFFFD700) : Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
+              
+              const SizedBox(height: 48),
+              
+              // CTA Button Area
+              if (!_canScan) _buildCooldownBar(),
+              
+              if (_canScan) ...[
+                 Container(
+                  width: double.infinity,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(32),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFFD700).withValues(alpha: 0.3),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: _cooldownLoaded ? () async {
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
+                      await _refreshCooldown();
+                    } : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFD700),
+                      foregroundColor: Colors.black,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                    ),
+                    child: const Text(
+                      'START SCAN',
+                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Your scan is ready! Tap above to analyse your face.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+              ],
+              
+              const SizedBox(height: 32),
+              
+              // ── Action Bars ─────────────────────────────────────────
               _buildActionBar(
                 icon: Icons.info_outline_rounded,
                 label: 'How to Use Scan',
@@ -834,51 +895,62 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                     MaterialPageRoute(builder: (_) => const HowToScanPage())),
               ),
 
-              const SizedBox(height: 100),
+              const SizedBox(height: 120),
             ],
           ),
         ),
       ),
-      bottomSheet: !_billingService.isPremium
-          ? GestureDetector(
-              onTap: _showPremiumBottomSheet,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF332A00), Color(0xFF1A1500)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  border: Border(
-                      top: BorderSide(
-                          color: const Color(0xFFFFD700).withValues(alpha:0.5),
-                          width: 1)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.workspace_premium,
-                        color: Color(0xFFFFD700), size: 36),
-                    SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Upgrade to Premium',
-                              style: TextStyle(
-                                  color: Color(0xFFFFD700),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16)),
-                          Text('Scan every 3 days instead of 30',
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 12)),
-                        ],
-                      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: !_billingService.isPremium
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: GestureDetector(
+                onTap: _showPremiumBottomSheet,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF2A2200), Color(0xFF141000)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    Icon(Icons.chevron_right, color: Color(0xFFFFD700)),
-                  ],
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.4), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Color(0x26FFD700),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 28),
+                        ),
+                      ),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Upgrade to Premium', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w800, fontSize: 16)),
+                            SizedBox(height: 2),
+                            Text('Scan every 3 days instead of 30', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFFFFD700), size: 16),
+                    ],
+                  ),
                 ),
               ),
             )
@@ -898,24 +970,32 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: iconColor.withValues(alpha:0.06),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor.withValues(alpha:0.25)),
+          color: const Color(0xFF161616),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
         child: Row(
           children: [
             Container(
-              width: 42,
-              height: 42,
+              width: 52,
+              height: 52,
               decoration: BoxDecoration(
-                color: iconColor.withValues(alpha:0.12),
-                borderRadius: BorderRadius.circular(12),
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: iconColor.withValues(alpha: 0.2)),
               ),
-              child: Icon(icon, color: iconColor, size: 22),
+              child: Icon(icon, color: iconColor, size: 26),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -923,18 +1003,26 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                   Text(label,
                       style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3)),
+                  const SizedBox(height: 4),
                   Text(subtitle,
                       style: TextStyle(
-                          color: Colors.white.withValues(alpha:0.4),
-                          fontSize: 12)),
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500)),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios_rounded,
-                color: iconColor.withValues(alpha:0.6), size: 15),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withValues(alpha: 0.6), size: 14),
+            ),
           ],
         ),
       ),
@@ -942,91 +1030,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ASK COACH PAGE
-// ─────────────────────────────────────────────────────────────────────────────
-
-class AskCoachPage extends StatelessWidget {
-  const AskCoachPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF111111),
-        title: const Text('Ask Coach',
-            style: TextStyle(color: Color(0xFFFFD700))),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios,
-              color: Color(0xFFFFD700), size: 18),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF9C6FFF).withValues(alpha:0.12),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                      color: const Color(0xFF9C6FFF).withValues(alpha:0.4),
-                      width: 2),
-                ),
-                child: const Icon(Icons.support_agent_rounded,
-                    color: Color(0xFF9C6FFF), size: 44),
-              ),
-              const SizedBox(height: 28),
-              const Text(
-                'Coming Soon',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Your AI coach is being trained to give you personalised looks-maxing advice.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: Colors.white54, fontSize: 15, height: 1.6),
-              ),
-              const SizedBox(height: 32),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF9C6FFF).withValues(alpha:0.1),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                      color: const Color(0xFF9C6FFF).withValues(alpha:0.3)),
-                ),
-                child: const Text(
-                  '🚀  Stay tuned for updates',
-                  style: TextStyle(
-                      color: Color(0xFF9C6FFF),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // HOW TO USE SCAN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 
