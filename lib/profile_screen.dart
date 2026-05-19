@@ -13,6 +13,7 @@ import 'scan_cooldown_service.dart';
 import 'lock_in_notification_service.dart';
 import 'ad_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -27,16 +28,25 @@ class _ProfilePageState extends State<ProfilePage> {
   double _weight = 0, _height = 0;
   String _weightUnit = 'kg', _heightUnit = 'cm';
   bool _loadingProfile = true;
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _loadVersion();
     _billing.addListener(_onBilling);
     if (!_billing.isInitialized) _billing.initialize();
   }
 
   void _onBilling() { if (mounted) setState(() {}); }
+
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _appVersion = info.version);
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -642,8 +652,11 @@ class _ProfilePageState extends State<ProfilePage> {
             const Center(child: Column(children: [
               Text('Level Max', style: TextStyle(color: Colors.white24, fontSize: 12)),
               SizedBox(height: 2),
-              Text('v1.0.0', style: TextStyle(color: Colors.white12, fontSize: 11)),
             ])),
+            Center(child: Text(
+              _appVersion.isNotEmpty ? 'v$_appVersion' : '',
+              style: const TextStyle(color: Colors.white12, fontSize: 11),
+            )),
             const SizedBox(height: 20),
           ])),
         ])),

@@ -51,3 +51,9 @@ app.*.map.json
 # Gradle temp/cache (redirected to project dir for disk space)
 .gradle_tmp/
 .gradle_home/
+
+# Signing keys & certificates — NEVER commit these
+upload_cert.pem
+android/app/key.properties
+*.jks
+*.keystore

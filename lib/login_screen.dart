@@ -1,5 +1,3 @@
-// ignore_for_file: deprecated_member_use
-
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -14,6 +12,7 @@ import 'deleted_users_service.dart';
 import 'scan_cooldown_service.dart';
 import 'billing_service.dart';
 import 'ad_service.dart';
+import 'user_sync_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -174,54 +173,24 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       try {
-        // Add timeout to prevent hanging when offline
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get()
-            .timeout(
-              const Duration(seconds: 5),
-              onTimeout: () {
-                debugPrint(
-                    "Firestore timeout during login - checking local cache");
-                throw Exception('Firestore timeout');
-              },
-            );
+        final result = await UserSyncService.fetchAndSync(
+          user.uid,
+          source: Source.server,
+        );
 
         if (!mounted) return;
 
-        // Check if document exists AND has username field (means onboarding completed)
-        // Also check the document is not marked as deleted
-        if (doc.exists &&
-            doc.data()?['deleted'] != true &&
-            doc.data()?['username'] != null &&
-            doc.data()?['username'] != '') {
-          final data = doc.data()!;
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('username', data['username'] ?? '');
-          await prefs.setString('firstName', data['firstName'] ?? '');
-          await prefs.setString('gender', data['gender'] ?? '');
-          if (data['age'] != null) await prefs.setInt('age', data['age'] as int);
-          if (data['weight'] != null) await prefs.setDouble('weight', (data['weight'] as num).toDouble());
-          if (data['weightUnit'] != null) await prefs.setString('weightUnit', data['weightUnit'] as String);
-          if (data['height'] != null) await prefs.setDouble('height', (data['height'] as num).toDouble());
-          if (data['heightUnit'] != null) await prefs.setString('heightUnit', data['heightUnit'] as String);
-
-          if (!mounted) return;
-          // If user hasn't completed new onboarding (no age), send to onboarding
-          if (data['age'] == null) {
-            Navigator.pushReplacement(context,
-                MaterialPageRoute(builder: (_) => const OnboardingScreen()));
-          } else {
+        switch (result) {
+          case UserSyncResult.ready:
             Navigator.pushReplacement(context,
                 MaterialPageRoute(builder: (_) => const MainNavigation()));
             // Trigger app open ad for free users after fresh login
             _triggerPostLoginAd();
-          }
-        } else {
-          if (!mounted) return;
-          Navigator.pushReplacement(context,
-              MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+            break;
+          case UserSyncResult.needsOnboarding:
+            Navigator.pushReplacement(context,
+                MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+            break;
         }
       } catch (e) {
         debugPrint("Firestore check failed: $e");
@@ -274,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    var withOpacity = const Color(0xFFFFD700).withOpacity(0.08);
+    var glowColor = const Color(0xFFFFD700).withValues(alpha: 0.08);
     return Scaffold(
       backgroundColor: Colors.black, // Makes mask seamless with a dark SVG background
       body: SafeArea(
@@ -319,7 +288,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: withOpacity,
+                        color: glowColor,
                         blurRadius: 80,
                         spreadRadius: 20,
                       ),
@@ -370,7 +339,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFFFD700).withOpacity(0.25),
+                          color: const Color(0xFFFFD700).withValues(alpha: 0.25),
                           blurRadius: 15,
                           offset: const Offset(0, 5),
                         ),
@@ -381,7 +350,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFFD700),
                         foregroundColor: Colors.black,
-                        disabledBackgroundColor: const Color(0xFFFFD700).withOpacity(0.8),
+                        disabledBackgroundColor: const Color(0xFFFFD700).withValues(alpha: 0.8),
                         disabledForegroundColor: Colors.black45,
                         padding: const EdgeInsets.symmetric(vertical: 18),
                         shape: RoundedRectangleBorder(
