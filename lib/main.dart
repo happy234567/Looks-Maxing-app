@@ -129,13 +129,10 @@ class _SplashScreenState extends State<SplashScreen> {
       await LockInNotificationService.initialize().timeout(const Duration(seconds: 3));
       } catch (_) {}
 
-     // Initialize FCM notifications early (not just after login)
+    // Initialize FCM notifications (permissions, token, foreground/background handlers)
     try {
-      await NotificationService.initialize().timeout(const Duration(seconds: 3));
-      } catch (_) {}
-      try {
-        await initFCM().timeout(const Duration(seconds: 5));
-        } catch (_) {}
+      await NotificationService.initialize().timeout(const Duration(seconds: 5));
+    } catch (_) {}
 
 
     try {
