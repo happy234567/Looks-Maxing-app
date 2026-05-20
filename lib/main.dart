@@ -131,8 +131,12 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // Initialize FCM notifications (permissions, token, foreground/background handlers)
     try {
-      await NotificationService.initialize().timeout(const Duration(seconds: 5));
-    } catch (_) {}
+      // Removed the 5-second timeout because the OS permission dialog pauses 
+      // execution until the user clicks Allow/Deny. 
+      await NotificationService.initialize();
+    } catch (e) {
+      debugPrint("Notification init failed: $e");
+    }
 
 
     try {

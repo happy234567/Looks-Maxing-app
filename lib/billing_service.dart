@@ -112,6 +112,8 @@ class BillingService extends ChangeNotifier {
       onError: (error) => debugPrint('[BillingService] Stream error: \$error'),
     );
 
+    // Small delay to let the Play Store connection fully settle
+    await Future.delayed(const Duration(milliseconds: 500));
     await _loadProducts();
     await _checkPremiumStatusFirebase();
   }
@@ -194,6 +196,16 @@ class BillingService extends ChangeNotifier {
   /// Triggers the Google Play subscription purchase sheet for the given product.
   Future<void> buySubscription(ProductDetails productDetails) async {
     if (isProcessingPurchase) return; // prevent double-tap
+
+    // Guard: make sure the store is still available before attempting
+    final available = await _iap.isAvailable();
+    if (!available) {
+      lastPurchaseOutcome = PurchaseOutcome.error;
+      lastPurchaseErrorMessage = 'Play Store is not available. Please try again.';
+      notifyListeners();
+      return;
+    }
+
     isProcessingPurchase = true;
     lastPurchaseOutcome = PurchaseOutcome.none;
     notifyListeners();
@@ -202,8 +214,15 @@ class BillingService extends ChangeNotifier {
       final GooglePlayPurchaseParam purchaseParam = GooglePlayPurchaseParam(
         productDetails: productDetails,
       );
-      // All our products are subscriptions → buyNonConsumable is correct.
-      await _iap.buyNonConsumable(purchaseParam: purchaseParam);
+      // buyNonConsumable is correct for subscriptions in flutter's in_app_purchase plugin.
+      // The isAvailable() guard above prevents the null PendingIntent crash.
+      final bool success = await _iap.buyNonConsumable(purchaseParam: purchaseParam);
+      if (!success) {
+        isProcessingPurchase = false;
+        lastPurchaseOutcome = PurchaseOutcome.error;
+        lastPurchaseErrorMessage = 'Could not open Play Store. Please try again.';
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('[BillingService] Error starting purchase: $e');
       isProcessingPurchase = false;
