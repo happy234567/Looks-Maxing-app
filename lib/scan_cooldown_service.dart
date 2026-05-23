@@ -12,6 +12,7 @@ import 'notification_plugin.dart';
 class ScanCooldownService {
   static const String _kLastScanPrefix = 'last_scan_date';
   static const int _scanReadyNotifId = 3001;
+  static const Duration _cooldownDuration = Duration(days: 1);
 
   static final FlutterLocalNotificationsPlugin _plugin = sharedNotificationsPlugin;
 
@@ -100,6 +101,15 @@ class ScanCooldownService {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_userKey(user.uid), lastScanStr);
         debugPrint('[ScanCooldown] Synced from Firestore for ${user.uid}: $lastScanStr');
+
+        // Re-schedule notification if cooldown is still active
+        // (handles app restart / Android clearing pending alarms)
+        final lastScan = DateTime.parse(lastScanStr);
+        final nextScanTime = lastScan.add(_cooldownDuration);
+        if (DateTime.now().isBefore(nextScanTime)) {
+          await _scheduleReadyNotification(nextScanTime, isPremium: false);
+          debugPrint('[ScanCooldown] Re-scheduled notification for $nextScanTime');
+        }
       }
     } catch (e) {
       debugPrint('[ScanCooldown] Failed to sync from Firestore: $e');
@@ -132,8 +142,7 @@ class ScanCooldownService {
       debugPrint('[ScanCooldown] Failed to save to Firestore: $e');
     }
 
-    final cooldownDays = isPremium ? 3 : 30;
-    final notifTime = now.add(Duration(days: cooldownDays));
+    final notifTime = now.add(_cooldownDuration);
     await _scheduleReadyNotification(notifTime, isPremium: isPremium);
   }
 
@@ -183,8 +192,7 @@ class ScanCooldownService {
     if (lastScanStr == null) return Duration.zero;
 
     final lastScan = DateTime.parse(lastScanStr);
-    final cooldownDays = isPremium ? 3 : 30;
-    final nextScanTime = lastScan.add(Duration(days: cooldownDays));
+    final nextScanTime = lastScan.add(_cooldownDuration);
     final now = DateTime.now();
     if (now.isAfter(nextScanTime)) return Duration.zero;
     return nextScanTime.difference(now);
@@ -194,8 +202,7 @@ class ScanCooldownService {
     final lastScanStr = await _getLastScanDate();
     if (lastScanStr == null) return null;
     final lastScan = DateTime.parse(lastScanStr);
-    final cooldownDays = isPremium ? 3 : 30;
-    final nextScanTime = lastScan.add(Duration(days: cooldownDays));
+    final nextScanTime = lastScan.add(_cooldownDuration);
     final now = DateTime.now();
     if (now.isAfter(nextScanTime)) return null;
     return nextScanTime;
@@ -281,8 +288,7 @@ class ScanCooldownService {
     final lastScanStr = await _getLastScanDate();
     if (lastScanStr == null) return 1.0;
     final lastScan = DateTime.parse(lastScanStr);
-    final cooldownDays = isPremium ? 3 : 30;
-    final totalMs = Duration(days: cooldownDays).inMilliseconds;
+    final totalMs = _cooldownDuration.inMilliseconds;
     final elapsedMs =
         DateTime.now().difference(lastScan).inMilliseconds.clamp(0, totalMs);
     return elapsedMs / totalMs;

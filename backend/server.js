@@ -184,11 +184,10 @@ app.post(
       const lastResetDate = uploads.lastReset && uploads.lastReset.toDate ? uploads.lastReset.toDate() : new Date();
 
       let limit = 6;
-      let windowMs = 30 * 24 * 60 * 60 * 1000;
+      let windowMs = 24 * 60 * 60 * 1000; // 24 hours for all plans
 
       if (plan === 'premium') {
         limit = 9;
-        windowMs = 24 * 60 * 60 * 1000;
       }
 
       if (now.getTime() - lastResetDate.getTime() > windowMs) {

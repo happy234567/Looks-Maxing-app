@@ -541,7 +541,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Get face scans every 3 days instead of 30, plus detailed attractiveness insights.',
+                'Scan without ads, plus get detailed attractiveness insights.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
@@ -663,8 +663,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
 
   Widget _buildCooldownBar() {
     final isPremium = _billingService.isPremium;
-    final _ = isPremium ? '3-day cooldown' : '30-day cooldown';
-    final barColor = isPremium ? const Color(0xFFFFD700) : const Color(0xFF4FC3F7);
+    final barColor = const Color(0xFFFFD700);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
@@ -760,7 +759,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                     Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 18),
                     SizedBox(width: 8),
                     Text(
-                      'Upgrade for 3-day cooldown',
+                      'Upgrade for ad-free scans',
                       style: TextStyle(color: Color(0xFFFFD700), fontSize: 14, fontWeight: FontWeight.w600),
                     ),
                   ],
@@ -869,7 +868,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _billingService.isPremium ? 'Premium: 1 scan every 3 days' : 'Free: 1 scan every 30 days',
+                      _billingService.isPremium ? 'Premium: 1 scan every 24 hours' : 'Free: 1 scan every 24 hours',
                       style: TextStyle(
                         color: _billingService.isPremium ? const Color(0xFFFFD700) : Colors.white70,
                         fontSize: 13,
@@ -927,6 +926,18 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
               const SizedBox(height: 32),
               
               // ── Action Bars ─────────────────────────────────────────
+              _buildActionBar(
+                icon: Icons.psychology_rounded,
+                label: 'Ask Coach',
+                subtitle: 'Your personal looks advisor',
+                iconColor: const Color(0xFF9C6FFF),
+                borderColor: const Color(0xFF9C6FFF),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const AskCoachPage())),
+              ),
+
+              const SizedBox(height: 12),
+
               _buildActionBar(
                 icon: Icons.info_outline_rounded,
                 label: 'How to Use Scan',
@@ -986,7 +997,7 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                           children: [
                             Text('Upgrade to Premium', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w800, fontSize: 16)),
                             SizedBox(height: 2),
-                            Text('Scan every 3 days instead of 30', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+                            Text('Ad-free scans & detailed insights', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
@@ -1067,6 +1078,255 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+// ASK COACH — COMING SOON PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AskCoachPage extends StatefulWidget {
+  const AskCoachPage({super.key});
+
+  @override
+  State<AskCoachPage> createState() => _AskCoachPageState();
+}
+
+class _AskCoachPageState extends State<AskCoachPage> with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnim;
+  bool _notifyPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const purple = Color(0xFF9C6FFF);
+    const gold = Color(0xFFFFD700);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF111111),
+        title: const Text('Ask Coach', style: TextStyle(color: purple)),
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: purple, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 32, 24, 48),
+        child: Column(
+          children: [
+            // ── Animated brain icon ──
+            AnimatedBuilder(
+              animation: _pulseAnim,
+              builder: (context, child) {
+                return Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: purple.withValues(alpha: 0.06),
+                    border: Border.all(
+                      color: purple.withValues(alpha: 0.2 * _pulseAnim.value),
+                      width: 2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: purple.withValues(alpha: 0.08 * _pulseAnim.value),
+                        blurRadius: 60 * _pulseAnim.value,
+                        spreadRadius: 15 * _pulseAnim.value,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.psychology_rounded, color: purple, size: 72),
+                );
+              },
+            ),
+
+            const SizedBox(height: 28),
+
+            // ── Title ──
+            const Text(
+              'Your Coach is\nBeing Trained',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+                height: 1.2,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: purple.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: purple.withValues(alpha: 0.3)),
+              ),
+              child: const Text(
+                'COMING SOON',
+                style: TextStyle(
+                  color: purple,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            const Text(
+              'We\'re building an AI-powered looks coach that learns your face, understands your goals, and gives you a personalized action plan.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white60, fontSize: 14, height: 1.5),
+            ),
+
+            const SizedBox(height: 32),
+
+
+
+            // ── Feature preview cards ──
+            const _CoachFeatureCard(
+              icon: Icons.auto_fix_high_rounded,
+              title: 'Personalized Tips',
+              description: 'Get specific advice based on your unique facial features and scores',
+              color: gold,
+            ),
+            const SizedBox(height: 12),
+            const _CoachFeatureCard(
+              icon: Icons.calendar_month_rounded,
+              title: 'Daily Routine',
+              description: 'Custom skincare and grooming routines tailored to your needs',
+              color: Color(0xFF4FC3F7),
+            ),
+            const SizedBox(height: 12),
+            const _CoachFeatureCard(
+              icon: Icons.shopping_bag_rounded,
+              title: 'Product Recommendations',
+              description: 'Curated product suggestions matched to your face analysis',
+              color: Color(0xFF66BB6A),
+            ),
+
+            const SizedBox(height: 32),
+
+            // ── Notify Me button ──
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _notifyPressed
+                    ? null
+                    : () {
+                        setState(() => _notifyPressed = true);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('🔔 We\'ll notify you when Coach is ready!'),
+                            backgroundColor: Color(0xFF1A1A1A),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _notifyPressed ? const Color(0xFF222222) : purple,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: const Color(0xFF222222),
+                  disabledForegroundColor: Colors.white54,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(_notifyPressed ? Icons.check_circle : Icons.notifications_active_rounded, size: 22),
+                    const SizedBox(width: 10),
+                    Text(
+                      _notifyPressed ? 'You\'ll Be Notified' : 'Notify Me When Ready',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CoachFeatureCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final Color color;
+
+  const _CoachFeatureCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 3),
+                Text(description,
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12.5, height: 1.3)),
+              ],
+            ),
+          ),
+          Icon(Icons.lock_outline_rounded, color: color.withValues(alpha: 0.4), size: 18),
+        ],
       ),
     );
   }
