@@ -3,6 +3,7 @@ const cors = require('cors');
 const multer = require('multer');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const fs = require('fs');
+const sharp = require('sharp');
 const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
 require('dotenv').config();
@@ -98,6 +99,48 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // -----------------------------
+// Helper: Compress Image to ≤1MB
+// -----------------------------
+const MAX_IMAGE_BYTES = 1 * 1024 * 1024; // 1 MB
+
+const compressImageIfNeeded = async (filepath) => {
+  const stats = fs.statSync(filepath);
+  if (stats.size <= MAX_IMAGE_BYTES) {
+    return; // Already under 1MB, no compression needed
+  }
+
+  console.log(`Compressing image: ${filepath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+
+  let quality = 80;
+  const MIN_QUALITY = 20;
+
+  while (quality >= MIN_QUALITY) {
+    const compressedBuffer = await sharp(filepath)
+      .jpeg({ quality, mozjpeg: true })
+      .toBuffer();
+
+    if (compressedBuffer.length <= MAX_IMAGE_BYTES) {
+      fs.writeFileSync(filepath, compressedBuffer);
+      console.log(`Compressed to ${(compressedBuffer.length / 1024 / 1024).toFixed(2)} MB (quality: ${quality})`);
+      return;
+    }
+
+    quality -= 10;
+  }
+
+  // If still over 1MB at minimum quality, resize dimensions too
+  const metadata = await sharp(filepath).metadata();
+  const scale = 0.5;
+  const compressedBuffer = await sharp(filepath)
+    .resize(Math.round((metadata.width || 1000) * scale), null, { fit: 'inside' })
+    .jpeg({ quality: MIN_QUALITY, mozjpeg: true })
+    .toBuffer();
+
+  fs.writeFileSync(filepath, compressedBuffer);
+  console.log(`Compressed with resize to ${(compressedBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+};
+
+// -----------------------------
 // Helper: Convert Image to Base64
 // -----------------------------
 const toBase64 = (filepath) => {
@@ -177,6 +220,11 @@ app.post(
         }
       }
 
+      // Compress images >1MB before sending to Gemini
+      for (const fp of filePaths) {
+        await compressImageIfNeeded(fp);
+      }
+
       const model = genAI.getGenerativeModel({
         model: 'gemini-2.5-flash',
         generationConfig: {
@@ -249,11 +297,11 @@ Return EXACTLY this JSON. No extra text.
 }`;
 
       const imageParts = [
-        { inlineData: { mimeType: frontImg.mimetype, data: toBase64(frontImg.path) } }
+        { inlineData: { mimeType: 'image/jpeg', data: toBase64(frontImg.path) } }
       ];
 
-      if (rightImg) imageParts.push({ inlineData: { mimeType: rightImg.mimetype, data: toBase64(rightImg.path) } });
-      if (leftImg) imageParts.push({ inlineData: { mimeType: leftImg.mimetype, data: toBase64(leftImg.path) } });
+      if (rightImg) imageParts.push({ inlineData: { mimeType: 'image/jpeg', data: toBase64(rightImg.path) } });
+      if (leftImg) imageParts.push({ inlineData: { mimeType: 'image/jpeg', data: toBase64(leftImg.path) } });
 
       let result;
       let attempt = 0;

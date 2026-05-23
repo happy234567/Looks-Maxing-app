@@ -46,6 +46,28 @@ class _CameraScreenState extends State<CameraScreen> {
   int _currentStep = 0;
   
   bool _isAnalyzing = false;
+  @override
+  void initState() {
+    super.initState();
+    _rescueAndroidPhoto();
+  }
+
+  // This rescues the photo if Android killed the app while the camera was open
+  Future<void> _rescueAndroidPhoto() async {
+    if (Platform.isAndroid) {
+      final LostDataResponse response = await _picker.retrieveLostData();
+      if (response.isEmpty || response.file == null) {
+        return;
+      }
+      setState(() {
+        if (_currentStep == 0) _frontImage = File(response.file!.path);
+        if (_currentStep == 1) _rightImage = File(response.file!.path);
+        if (_currentStep == 2) _leftImage = File(response.file!.path);
+      });
+      // If we rescued a photo, automatically advance to the next step
+      _confirmPhoto();
+    }
+  }
   String? _errorMessage; // Handles the Try Again screen
 
   final List<Map<String, String>> _steps = [
@@ -70,33 +92,41 @@ class _CameraScreenState extends State<CameraScreen> {
   ];
 
   Future<void> _takePhoto() async {
-    final XFile? photo = await _picker.pickImage(
-      source: ImageSource.camera,
-      preferredCameraDevice: CameraDevice.front,
-      imageQuality: 80,
-    );
+    try {
+      final XFile? photo = await _picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.front,
+        imageQuality: 80,
+      );
 
-    if (photo != null) {
-      setState(() {
-        if (_currentStep == 0) _frontImage = File(photo.path);
-        if (_currentStep == 1) _rightImage = File(photo.path);
-        if (_currentStep == 2) _leftImage = File(photo.path);
-      });
+      if (photo != null) {
+        setState(() {
+          if (_currentStep == 0) _frontImage = File(photo.path);
+          if (_currentStep == 1) _rightImage = File(photo.path);
+          if (_currentStep == 2) _leftImage = File(photo.path);
+        });
+      }
+    } catch (e) {
+      debugPrint('Camera ignored: $e'); // Prevents the already_active crash!
     }
   }
 
   Future<void> _pickFromGallery() async {
-    final XFile? photo = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
-    );
+    try {
+      final XFile? photo = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
 
-    if (photo != null) {
-      setState(() {
-        if (_currentStep == 0) _frontImage = File(photo.path);
-        if (_currentStep == 1) _rightImage = File(photo.path);
-        if (_currentStep == 2) _leftImage = File(photo.path);
-      });
+      if (photo != null) {
+        setState(() {
+          if (_currentStep == 0) _frontImage = File(photo.path);
+          if (_currentStep == 1) _rightImage = File(photo.path);
+          if (_currentStep == 2) _leftImage = File(photo.path);
+        });
+      }
+    } catch (e) {
+      debugPrint('Gallery ignored: $e'); // Prevents the already_active crash!
     }
   }
 
@@ -308,9 +338,7 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
         try {
-          final billing = BillingService();
-          await billing.initialize();
-          await ScanCooldownService.recordScan(isPremium: billing.isPremium);
+          await ScanCooldownService.recordScan(isPremium: BillingService().isPremium);
         } catch (e) {
           debugPrint('Failed to record scan cooldown: $e');
         }
@@ -343,15 +371,14 @@ class _CameraScreenState extends State<CameraScreen> {
           final String? processedLeft = await processImage(_leftImage, 'left');
 
           finalImagePaths = [
-           if (processedFront != null) processedFront
-               else if (_frontImage != null) _frontImage!.path,
-              if (processedRight != null) processedRight
-              else if (_rightImage != null) _rightImage!.path,
-              if (processedLeft != null) processedLeft
-              else if (_leftImage != null) _leftImage!.path,
-              ].
-              whereType<String>().toList();
-              } catch (e) {
+            if (processedFront != null) processedFront
+            else if (_frontImage != null) _frontImage!.path,
+            if (processedRight != null) processedRight
+            else if (_rightImage != null) _rightImage!.path,
+            if (processedLeft != null) processedLeft
+            else if (_leftImage != null) _leftImage!.path,
+          ].whereType<String>().toList();
+        } catch (e) {
           debugPrint('Image processing error (non-fatal): $e');
         }
 
@@ -495,10 +522,11 @@ class _CameraScreenState extends State<CameraScreen> {
             style: TextStyle(color: Color(0xFFFFD700))),
         centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
             // Progress bar
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -666,6 +694,7 @@ class _CameraScreenState extends State<CameraScreen> {
           ],
         ),
       ),
+      ), // This closes the new SafeArea widget
     );
   }
 }
