@@ -156,8 +156,7 @@ app.post(
   '/analyze',
   upload.fields([
     { name: 'front' },
-    { name: 'right' },
-    { name: 'left' }
+    { name: 'side' }
   ]),
   async (req, res) => {
     let filePaths = [];
@@ -206,12 +205,10 @@ app.post(
       }
 
       const frontImg = req.files['front'][0];
-      const rightImg = req.files['right']?.[0];
-      const leftImg = req.files['left']?.[0];
+      const sideImg = req.files['side']?.[0];
 
       filePaths.push(frontImg.path);
-      if (rightImg) filePaths.push(rightImg.path);
-      if (leftImg) filePaths.push(leftImg.path);
+      if (sideImg) filePaths.push(sideImg.path);
 
       // Validate image files are readable
       for (const fp of filePaths) {
@@ -300,8 +297,7 @@ Return EXACTLY this JSON. No extra text.
         { inlineData: { mimeType: 'image/jpeg', data: toBase64(frontImg.path) } }
       ];
 
-      if (rightImg) imageParts.push({ inlineData: { mimeType: 'image/jpeg', data: toBase64(rightImg.path) } });
-      if (leftImg) imageParts.push({ inlineData: { mimeType: 'image/jpeg', data: toBase64(leftImg.path) } });
+      if (sideImg) imageParts.push({ inlineData: { mimeType: 'image/jpeg', data: toBase64(sideImg.path) } });
 
       let result;
       let attempt = 0;

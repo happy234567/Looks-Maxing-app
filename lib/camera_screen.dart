@@ -38,17 +38,64 @@ class CameraScreen extends StatefulWidget {
   State<CameraScreen> createState() => _CameraScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
+class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderStateMixin {
   final ImagePicker _picker = ImagePicker();
   File? _frontImage;
-  File? _rightImage;
-  File? _leftImage;
+  File? _sideImage;
   int _currentStep = 0;
   
   bool _isAnalyzing = false;
+
+  // ── Scan loading animation state ──
+  double _scanProgress = 0.0;
+  int _statusIndex = 0;
+  Timer? _progressTimer;
+  late AnimationController _glowController;
+  late Animation<double> _glowAnimation;
+
+  static const List<String> _statusMessages = [
+    'Uploading photos…',
+    'Detecting facial landmarks…',
+    'Measuring bone structure…',
+    'Analyzing symmetry…',
+    'Evaluating skin quality…',
+    'Calculating PSL metrics…',
+    'Computing final scores…',
+  ];
+
+  void _startScanAnimation() {
+    _scanProgress = 0.0;
+    _statusIndex = 0;
+    _progressTimer?.cancel();
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 400), (timer) {
+      if (!mounted) { timer.cancel(); return; }
+      setState(() {
+        // Progress caps at 92% — the remaining 8% jumps to 100 on completion
+        if (_scanProgress < 0.92) {
+          _scanProgress += 0.012 + (0.005 * (1 - _scanProgress)); // slows as it nears end
+        }
+        // Cycle status messages roughly every 2.5s
+        final newIndex = (_scanProgress * _statusMessages.length).floor().clamp(0, _statusMessages.length - 1);
+        if (newIndex != _statusIndex) _statusIndex = newIndex;
+      });
+    });
+  }
+
+  void _stopScanAnimation() {
+    _progressTimer?.cancel();
+    _progressTimer = null;
+  }
+
   @override
   void initState() {
     super.initState();
+    _glowController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+    _glowAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
+      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
+    );
     _rescueAndroidPhoto();
   }
 
@@ -61,13 +108,20 @@ class _CameraScreenState extends State<CameraScreen> {
       }
       setState(() {
         if (_currentStep == 0) _frontImage = File(response.file!.path);
-        if (_currentStep == 1) _rightImage = File(response.file!.path);
-        if (_currentStep == 2) _leftImage = File(response.file!.path);
+        if (_currentStep == 1) _sideImage = File(response.file!.path);
       });
       // If we rescued a photo, automatically advance to the next step
       _confirmPhoto();
     }
   }
+
+  @override
+  void dispose() {
+    _stopScanAnimation();
+    _glowController.dispose();
+    super.dispose();
+  }
+
   String? _errorMessage; // Handles the Try Again screen
 
   final List<Map<String, String>> _steps = [
@@ -78,15 +132,9 @@ class _CameraScreenState extends State<CameraScreen> {
       'required': 'true',
     },
     {
-      'title': 'Right Side',
-      'instruction': 'Turn your head to the RIGHT\nKeep chin level',
-      'icon': '➡️',
-      'required': 'false',
-    },
-    {
-      'title': 'Left Side',
-      'instruction': 'Turn your head to the LEFT\nKeep chin level',
-      'icon': '⬅️',
+      'title': 'Side Face',
+      'instruction': 'Turn your head to either side\nKeep chin level',
+      'icon': '👤',
       'required': 'false',
     },
   ];
@@ -102,8 +150,7 @@ class _CameraScreenState extends State<CameraScreen> {
       if (photo != null) {
         setState(() {
           if (_currentStep == 0) _frontImage = File(photo.path);
-          if (_currentStep == 1) _rightImage = File(photo.path);
-          if (_currentStep == 2) _leftImage = File(photo.path);
+          if (_currentStep == 1) _sideImage = File(photo.path);
         });
       }
     } catch (e) {
@@ -121,8 +168,7 @@ class _CameraScreenState extends State<CameraScreen> {
       if (photo != null) {
         setState(() {
           if (_currentStep == 0) _frontImage = File(photo.path);
-          if (_currentStep == 1) _rightImage = File(photo.path);
-          if (_currentStep == 2) _leftImage = File(photo.path);
+          if (_currentStep == 1) _sideImage = File(photo.path);
         });
       }
     } catch (e) {
@@ -131,7 +177,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _confirmPhoto() async {
-    if (_currentStep < 2) {
+    if (_currentStep < 1) {
       setState(() => _currentStep++);
     } else {
       await _analyzePhotos();
@@ -139,7 +185,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _skipPhoto() {
-    if (_currentStep < 2) {
+    if (_currentStep < 1) {
       setState(() => _currentStep++);
     } else {
       _analyzePhotos();
@@ -194,15 +240,9 @@ class _CameraScreenState extends State<CameraScreen> {
         'front', _frontImage!.path,
         contentType: MediaType('image', 'jpeg')));
 
-    if (_rightImage != null) {
+    if (_sideImage != null) {
       request.files.add(await http.MultipartFile.fromPath(
-          'right', _rightImage!.path,
-          contentType: MediaType('image', 'jpeg')));
-    }
-
-    if (_leftImage != null) {
-      request.files.add(await http.MultipartFile.fromPath(
-          'left', _leftImage!.path,
+          'side', _sideImage!.path,
           contentType: MediaType('image', 'jpeg')));
     }
 
@@ -285,6 +325,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _isAnalyzing = true;
       _errorMessage = null;
     });
+    _startScanAnimation();
 
     try {
       String idToken;
@@ -367,16 +408,13 @@ class _CameraScreenState extends State<CameraScreen> {
           }
 
           processedFront = await processImage(_frontImage, 'front');
-          final String? processedRight = await processImage(_rightImage, 'right');
-          final String? processedLeft = await processImage(_leftImage, 'left');
+          final String? processedSide = await processImage(_sideImage, 'side');
 
           finalImagePaths = [
             if (processedFront != null) processedFront
             else if (_frontImage != null) _frontImage!.path,
-            if (processedRight != null) processedRight
-            else if (_rightImage != null) _rightImage!.path,
-            if (processedLeft != null) processedLeft
-            else if (_leftImage != null) _leftImage!.path,
+            if (processedSide != null) processedSide
+            else if (_sideImage != null) _sideImage!.path,
           ].whereType<String>().toList();
         } catch (e) {
           debugPrint('Image processing error (non-fatal): $e');
@@ -422,6 +460,7 @@ class _CameraScreenState extends State<CameraScreen> {
         throw Exception(errorMsg ?? 'Analysis failed. Please try again.');
       }
     } catch (e) {
+      _stopScanAnimation();
       if (!mounted) return;
       setState(() {
         _isAnalyzing = false;
@@ -433,15 +472,13 @@ class _CameraScreenState extends State<CameraScreen> {
   void _retakePhoto() {
     setState(() {
       if (_currentStep == 0) _frontImage = null;
-      if (_currentStep == 1) _rightImage = null;
-      if (_currentStep == 2) _leftImage = null;
+      if (_currentStep == 1) _sideImage = null;
     });
   }
 
   File? get _currentImage {
     if (_currentStep == 0) return _frontImage;
-    if (_currentStep == 1) return _rightImage;
-    return _leftImage;
+    return _sideImage;
   }
 
   @override
@@ -455,17 +492,70 @@ class _CameraScreenState extends State<CameraScreen> {
         backgroundColor: const Color(0xFF0A0A0A),
         body: Center(
           child: _isAnalyzing
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const CircularProgressIndicator(color: Color(0xFFFFD700)),
-                    const SizedBox(height: 24),
-                    const Text('Analyzing your face...',
-                        style: TextStyle(color: Colors.white, fontSize: 18)),
-                    const SizedBox(height: 8),
-                    const Text('AI is calculating your scores',
-                        style: TextStyle(color: Colors.white54)),
-                  ],
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Pulsing face icon
+                      AnimatedBuilder(
+                        animation: _glowAnimation,
+                        builder: (context, child) {
+                          return Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFD700).withValues(alpha: 0.05),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: const Color(0xFFFFD700).withValues(alpha: 0.25 * _glowAnimation.value),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFFD700).withValues(alpha: 0.07 * _glowAnimation.value),
+                                  blurRadius: 50 * _glowAnimation.value,
+                                  spreadRadius: 10 * _glowAnimation.value,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.face_retouching_natural_rounded, color: Color(0xFFFFD700), size: 64),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 32),
+                      const Text('Analyzing Your Face',
+                          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                      const SizedBox(height: 24),
+                      // Live progress bar
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: _scanProgress.clamp(0.0, 1.0),
+                          minHeight: 8,
+                          backgroundColor: const Color(0xFF1A1A1A),
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFFD700)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Percentage + status
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _statusMessages[_statusIndex],
+                            style: const TextStyle(color: Colors.white54, fontSize: 13),
+                          ),
+                          Text(
+                            '${(_scanProgress * 100).toInt().clamp(0, 99)}%',
+                            style: const TextStyle(color: Color(0xFFFFD700), fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      const Text('This may take a minute',
+                          style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    ],
+                  ),
                 )
               : Padding(
                   padding: const EdgeInsets.all(24.0),
@@ -531,10 +621,10 @@ class _CameraScreenState extends State<CameraScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(
-                  3,
+                  2,
                   (i) => Container(
                         margin: const EdgeInsets.symmetric(horizontal: 6),
-                        width: 60,
+                        width: 80,
                         height: 6,
                         decoration: BoxDecoration(
                           color: i <= _currentStep
@@ -546,7 +636,7 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
             const SizedBox(height: 16),
 
-            Text('Step ${_currentStep + 1} of 3',
+            Text('Step ${_currentStep + 1} of 2',
                 style: const TextStyle(color: Colors.white54, fontSize: 14)),
             const SizedBox(height: 4),
             Row(
@@ -685,7 +775,7 @@ class _CameraScreenState extends State<CameraScreen> {
                             borderRadius: BorderRadius.circular(30)),
                       ),
                       child: Text(
-                          _currentStep < 2 ? 'Confirm ✓' : 'Analyze!'),
+                          _currentStep < 1 ? 'Confirm ✓' : 'Analyze!'),
                     ),
                   ),
                 ],

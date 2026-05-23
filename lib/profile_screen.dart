@@ -367,7 +367,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _followInstagram() async {
-    final url = Uri.parse('https://www.instagram.com/level_max_app/');
+    final url = Uri.parse('https://www.instagram.com/levelmax_official/');
     try { await launchUrl(url, mode: LaunchMode.externalApplication); } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open Instagram')));
