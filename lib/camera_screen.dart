@@ -49,6 +49,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
   // ── Scan loading animation state ──
   double _scanProgress = 0.0;
   int _statusIndex = 0;
+  String? _completionMessage; // Shown after scan finishes (replaces status text)
   Timer? _progressTimer;
   late AnimationController _glowController;
   late Animation<double> _glowAnimation;
@@ -66,6 +67,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
   void _startScanAnimation() {
     _scanProgress = 0.0;
     _statusIndex = 0;
+    _completionMessage = null;
     _progressTimer?.cancel();
     _progressTimer = Timer.periodic(const Duration(milliseconds: 400), (timer) {
       if (!mounted) { timer.cancel(); return; }
@@ -84,6 +86,19 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
   void _stopScanAnimation() {
     _progressTimer?.cancel();
     _progressTimer = null;
+  }
+
+  /// Smoothly completes the progress bar to 100% and shows a done message.
+  /// Returns after a brief pause so the user sees the completion state.
+  Future<void> _completeScanAnimation() async {
+    _stopScanAnimation();
+    if (!mounted) return;
+    setState(() {
+      _scanProgress = 1.0;
+      _completionMessage = '✓ Analysis complete!';
+    });
+    // Let the user see the 100% state before transitioning
+    await Future.delayed(const Duration(milliseconds: 700));
   }
 
   @override
@@ -327,6 +342,11 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
     });
     _startScanAnimation();
 
+    // Kick off ad loading NOW so the ad is ready when the scan finishes.
+    // With mediation this can take 3-5s — running it in parallel with the
+    // scan means zero delay at the end.
+    AdService().preloadRewardedNow();
+
     try {
       String idToken;
       try {
@@ -428,18 +448,33 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
         if (!mounted) return;
 
-        _stopScanAnimation();
+        // Animate progress to 100% so the user sees completion
+        await _completeScanAnimation();
+        if (!mounted) return;
 
-        // Always show rewarded ad before results
-        await AdService().showScanAd(onComplete: () {
-          if (!mounted) return;
+        // Premium users skip ads entirely; free users watch a rewarded ad
+        if (BillingService().isPremium) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImagePaths),
             ),
           );
-        });
+        } else {
+          // Clear analyzing state BEFORE showing the ad so the progress bar
+          // doesn't flash back when the ad dismisses and Flutter repaints.
+          setState(() => _isAnalyzing = false);
+
+          await AdService().showScanAd(onComplete: () {
+            if (!mounted) return;
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ResultsScreen(scores: scores, imagePaths: finalImagePaths),
+              ),
+            );
+          });
+        }
       } else {
         final errorMsg = data['error'];
         if (errorMsg is String && errorMsg.contains('limit')) {
@@ -530,11 +565,15 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            _statusMessages[_statusIndex],
-                            style: const TextStyle(color: Colors.white54, fontSize: 13),
+                            _completionMessage ?? _statusMessages[_statusIndex],
+                            style: TextStyle(
+                              color: _completionMessage != null ? const Color(0xFF4CAF50) : Colors.white54,
+                              fontSize: 13,
+                              fontWeight: _completionMessage != null ? FontWeight.w600 : FontWeight.normal,
+                            ),
                           ),
                           Text(
-                            '${(_scanProgress * 100).toInt().clamp(0, 99)}%',
+                            '${(_scanProgress * 100).toInt().clamp(0, 100)}%',
                             style: const TextStyle(color: Color(0xFFFFD700), fontSize: 13, fontWeight: FontWeight.w700),
                           ),
                         ],

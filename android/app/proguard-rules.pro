@@ -2,6 +2,10 @@
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
 
+# AndroidX Activity (edge-to-edge)
+-keep class androidx.activity.** { *; }
+-dontwarn androidx.activity.**
+
 # Firebase
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
@@ -18,6 +22,11 @@
 # Google Mobile Ads (AdMob)
 -keep class com.google.android.gms.ads.** { *; }
 -dontwarn com.google.android.gms.ads.**
+
+# Meta Audience Network (Facebook) — AdMob mediation adapter
+-keep class com.facebook.ads.** { *; }
+-dontwarn com.facebook.ads.**
+-keep class com.google.ads.mediation.facebook.** { *; }
 
 # In-App Purchase — keeps BillingClient intact so ProxyBillingActivity doesn't NPE
 -keep class com.android.billingclient.** { *; }

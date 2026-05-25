@@ -10,12 +10,14 @@ class AdService {
   factory AdService() => _instance;
   AdService._internal();
 
-  // ── Ad Unit IDs ────────────────────────────────────────────────────────────
+  // ── AdMob Ad Unit IDs ──────────────────────────────────────────────────────
   // PRODUCTION Rewarded Ad unit
   static const String _rewardedAdUnitId = 'ca-app-pub-1840880800077412/2124414737'; 
   
   // PRODUCTION App Open Ad unit
   static const String _appOpenAdUnitId  = 'ca-app-pub-1840880800077412/6573352674'; 
+
+
 
   // ── Config ─────────────────────────────────────────────────────────────────
   static const int _maxAdsPerDay   = 5;
@@ -132,7 +134,16 @@ class AdService {
     return count < _maxAdsPerDay;
   }
 
-  // ── Rewarded Ad (20-30 sec forced) ─────────────────────────────────────────
+  // ── AdMob Rewarded Ad (primary) ────────────────────────────────────────────
+
+  /// Kick off a rewarded ad load early (e.g. when a scan starts) so the ad
+  /// is ready by the time results arrive. No-op if one is already loaded.
+  void preloadRewardedNow() {
+    if (_rewardedAd != null || _isLoadingRewarded) return;
+    debugPrint('[AdService] Early preload requested — loading rewarded ad');
+    _preloadRewarded();
+  }
+
   void _preloadRewarded() {
     if (_isLoadingRewarded) return;
     _isLoadingRewarded = true;
@@ -154,7 +165,12 @@ class AdService {
     );
   }
 
+
+
+  // ── Show Rewarded Ad (AdMob + Meta AN via mediation) ──────────────────────
+
   /// Show Rewarded Ad before scan results. Calls [onComplete] when done.
+  /// AdMob serves ads with Meta Audience Network via mediation bidding.
   Future<void> showScanAd({required VoidCallback onComplete}) async {
     if (!await _canShowAd()) {
       debugPrint('[AdService] Daily ad limit reached, skipping');
@@ -162,48 +178,50 @@ class AdService {
       return;
     }
 
+    // ── Try AdMob first ──
     final ad = _rewardedAd;
-    if (ad == null) {
-      debugPrint('[AdService] No Rewarded Ad loaded, skipping');
-      onComplete();
-      _preloadRewarded(); 
+    if (ad != null) {
+      bool completed = false;
+
+      void safeComplete() {
+        if (!completed) {
+          completed = true;
+          _rewardedAd = null;
+          _preloadRewarded(); 
+          onComplete();
+        }
+      }
+
+      ad.fullScreenContentCallback = FullScreenContentCallback(
+        onAdDismissedFullScreenContent: (ad) {
+          ad.dispose();
+          safeComplete(); // Go to results when they close the ad
+        },
+        onAdFailedToShowFullScreenContent: (ad, error) {
+          ad.dispose();
+          debugPrint('[AdService] Rewarded Ad failed to show: $error');
+          safeComplete();
+        },
+        onAdShowedFullScreenContent: (_) {
+          _incrementAdCount();
+          debugPrint('[AdService] Rewarded Ad showing');
+        },
+      );
+
+      // Safety timeout — if ad hangs for some reason, show results after 45s anyway
+      Timer(const Duration(seconds: 45), safeComplete);
+
+      await ad.show(onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
+        debugPrint('[AdService] User earned reward! (Watched the full ad)');
+        // The user successfully watched the 30 seconds! 
+      });
       return;
     }
 
-    bool completed = false;
-
-    void safeComplete() {
-      if (!completed) {
-        completed = true;
-        _rewardedAd = null;
-        _preloadRewarded(); 
-        onComplete();
-      }
-    }
-
-    ad.fullScreenContentCallback = FullScreenContentCallback(
-      onAdDismissedFullScreenContent: (ad) {
-        ad.dispose();
-        safeComplete(); // Go to results when they close the ad
-      },
-      onAdFailedToShowFullScreenContent: (ad, error) {
-        ad.dispose();
-        debugPrint('[AdService] Rewarded Ad failed to show: $error');
-        safeComplete();
-      },
-      onAdShowedFullScreenContent: (_) {
-        _incrementAdCount();
-        debugPrint('[AdService] Rewarded Ad showing');
-      },
-    );
-
-    // Safety timeout — if ad hangs for some reason, show results after 45s anyway
-    Timer(const Duration(seconds: 45), safeComplete);
-
-    await ad.show(onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
-      debugPrint('[AdService] User earned reward! (Watched the full ad)');
-      // The user successfully watched the 30 seconds! 
-    });
+    // ── No ad available ──
+    debugPrint('[AdService] No ad available, skipping');
+    onComplete();
+    _preloadRewarded();
   }
 
   // ── App Open Ad ────────────────────────────────────────────────────────────

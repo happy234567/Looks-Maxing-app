@@ -1,7 +1,7 @@
 name: level_maxing
 description: "Level Max — AI face scan and looks maxing guide."
 publish_to: 'none'
-version: 1.0.1+15
+version: 1.0.2+16
 
 environment:
   sdk: ^3.11.0
@@ -36,6 +36,7 @@ dependencies:
     path: local_plugins/flutter_windowmanager
   screen_capture_event: ^1.2.0
   google_mobile_ads: ^5.1.0
+  unity_ads_plugin: ^0.3.30
   flutter_timezone: ^3.0.0
   workmanager: ^0.9.0+3
   package_info_plus: ^8.0.0

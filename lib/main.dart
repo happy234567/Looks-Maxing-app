@@ -909,17 +909,33 @@ class _FaceRatingPageState extends State<FaceRatingPage> {
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
                     ),
-                    child: const Text(
-                      'START SCAN',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (!_billingService.isPremium) ...[
+                          const Icon(Icons.play_circle_filled_rounded, size: 22),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'WATCH AD & SCAN',
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5),
+                          ),
+                        ] else ...[
+                          const Text(
+                            'START SCAN',
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'Your scan is ready! Tap above to analyse your face.',
+                Text(
+                  _billingService.isPremium
+                      ? 'Your scan is ready! Tap above to analyse your face.'
+                      : 'Watch a short ad to unlock your face scan.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w500),
+                  style: const TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w500),
                 ),
               ],
               

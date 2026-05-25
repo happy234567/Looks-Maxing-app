@@ -50,6 +50,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -74,4 +75,7 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation("androidx.activity:activity-ktx:1.9.3")
+    // Meta Audience Network adapter for AdMob mediation bidding
+    implementation("com.google.ads.mediation:facebook:6.21.0.3")
 }
