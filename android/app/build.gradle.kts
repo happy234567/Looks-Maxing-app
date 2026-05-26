@@ -78,4 +78,6 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     // Meta Audience Network adapter for AdMob mediation bidding
     implementation("com.google.ads.mediation:facebook:6.21.0.3")
+    // Unity Ads adapter for AdMob mediation bidding
+    implementation("com.google.ads.mediation:unity:4.18.0.0")
 }

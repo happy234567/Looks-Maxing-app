@@ -28,6 +28,13 @@
 -dontwarn com.facebook.ads.**
 -keep class com.google.ads.mediation.facebook.** { *; }
 
+# Unity Ads — AdMob mediation adapter
+-keep class com.unity3d.ads.** { *; }
+-dontwarn com.unity3d.ads.**
+-keep class com.unity3d.services.** { *; }
+-dontwarn com.unity3d.services.**
+-keep class com.google.ads.mediation.unity.** { *; }
+
 # In-App Purchase — keeps BillingClient intact so ProxyBillingActivity doesn't NPE
 -keep class com.android.billingclient.** { *; }
 -dontwarn com.android.billingclient.**

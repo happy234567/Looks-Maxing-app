@@ -27,9 +27,14 @@ class AdService {
   RewardedAd? _rewardedAd;
   AppOpenAd?  _appOpenAd;
   bool _isLoadingRewarded = false;
-  bool _appOpenShownThisSession = false;
+  bool _isLoadingAppOpen  = false;
   DateTime? _lastAppOpenShown;
   bool _initialized = false;
+
+  /// Timestamp when the app open ad was loaded. Ads expire after ~4 hours;
+  /// we conservatively discard after 3 hours to avoid showing stale ads.
+  DateTime? _appOpenAdLoadTime;
+  static const int _appOpenAdMaxAgeMinutes = 180; // 3 hours
 
   /// The userId this ad state belongs to. Prevents cross-account leakage.
   String? _activeUserId;
@@ -49,16 +54,11 @@ class AdService {
   /// Call on every login / account switch to bind ad state to the current user.
   /// Resets per-session ad state so the new user starts fresh.
   void resetForUser(String userId) {
-    if (_activeUserId == userId) {
-      debugPrint('[AdService] resetForUser: same user $userId — no change');
-      return;
-    }
-
-    debugPrint('[AdService] resetForUser: switching from $_activeUserId → $userId');
+    debugPrint('[AdService] resetForUser: $_activeUserId → $userId');
     _activeUserId = userId;
 
-    // Reset session-level ad state for the new user
-    _appOpenShownThisSession = false;
+    // Always reset session-level ad state so the app open ad can show
+    // again after a fresh app launch (even for the same user).
     _lastAppOpenShown = null;
 
     // Dispose existing preloaded ads (they may carry the old user's context)
@@ -66,7 +66,9 @@ class AdService {
     _rewardedAd = null;
     _appOpenAd?.dispose();
     _appOpenAd = null;
+    _appOpenAdLoadTime = null;
     _isLoadingRewarded = false;
+    _isLoadingAppOpen  = false;
 
     // Preload fresh ads for the new user
     _preloadRewarded();
@@ -77,14 +79,15 @@ class AdService {
   void clearOnSignOut() {
     debugPrint('[AdService] clearOnSignOut — wiping ad state');
     _activeUserId = null;
-    _appOpenShownThisSession = false;
     _lastAppOpenShown = null;
 
     _rewardedAd?.dispose();
     _rewardedAd = null;
     _appOpenAd?.dispose();
     _appOpenAd = null;
+    _appOpenAdLoadTime = null;
     _isLoadingRewarded = false;
+    _isLoadingAppOpen  = false;
   }
 
   // ── Daily Ad Count (Firestore, per-user) ───────────────────────────────────
@@ -147,6 +150,7 @@ class AdService {
   void _preloadRewarded() {
     if (_isLoadingRewarded) return;
     _isLoadingRewarded = true;
+    debugPrint('[AdService] Loading rewarded ad…');
     RewardedAd.load(
       adUnitId: _rewardedAdUnitId,
       request: const AdRequest(),
@@ -154,12 +158,19 @@ class AdService {
         onAdLoaded: (ad) {
           _rewardedAd = ad;
           _isLoadingRewarded = false;
-          debugPrint('[AdService] Rewarded Ad loaded');
+          debugPrint('[AdService] ✅ Rewarded Ad loaded');
         },
         onAdFailedToLoad: (error) {
           _rewardedAd = null;
           _isLoadingRewarded = false;
-          debugPrint('[AdService] Rewarded Ad failed: $error');
+          debugPrint('[AdService] ❌ Rewarded Ad failed: $error');
+          // Retry after a short delay
+          Future.delayed(const Duration(seconds: 10), () {
+            if (_rewardedAd == null && !_isLoadingRewarded) {
+              debugPrint('[AdService] Retrying rewarded ad load…');
+              _preloadRewarded();
+            }
+          });
         },
       ),
     );
@@ -225,55 +236,112 @@ class AdService {
   }
 
   // ── App Open Ad ────────────────────────────────────────────────────────────
- void _preloadAppOpen() {
+  void _preloadAppOpen() {
+    if (_isLoadingAppOpen) return;
+    _isLoadingAppOpen = true;
+    debugPrint('[AdService] Loading app open ad…');
     AppOpenAd.load(
       adUnitId: _appOpenAdUnitId,
       request: const AdRequest(),
       adLoadCallback: AppOpenAdLoadCallback(
         onAdLoaded: (ad) {
           _appOpenAd = ad;
-          debugPrint('[AdService] App open ad loaded');
+          _appOpenAdLoadTime = DateTime.now();
+          _isLoadingAppOpen = false;
+          debugPrint('[AdService] ✅ App open ad loaded');
         },
         onAdFailedToLoad: (error) {
           _appOpenAd = null;
-          debugPrint('[AdService] App open ad failed: $error');
+          _appOpenAdLoadTime = null;
+          _isLoadingAppOpen = false;
+          debugPrint('[AdService] ❌ App open ad failed: $error');
+          // Retry after a short delay
+          Future.delayed(const Duration(seconds: 10), () {
+            if (_appOpenAd == null && !_isLoadingAppOpen) {
+              debugPrint('[AdService] Retrying app open ad load…');
+              _preloadAppOpen();
+            }
+          });
         },
       ),
     );
   }
 
-  Future<void> showAppOpenAdIfReady() async {
-    if (_appOpenShownThisSession) return;
+  /// Returns true if an app open ad was loaded too long ago (stale).
+  bool _isAppOpenAdExpired() {
+    if (_appOpenAdLoadTime == null) return true;
+    return DateTime.now().difference(_appOpenAdLoadTime!).inMinutes >= _appOpenAdMaxAgeMinutes;
+  }
 
+  /// Show the app open ad if one is loaded and ready.
+  /// 
+  /// This method has a built-in wait: if the ad is currently loading,
+  /// it will wait up to [maxWaitSeconds] for it to finish before giving up.
+  /// This prevents the race condition where the ad hadn't loaded yet
+  /// when called shortly after app start.
+  Future<void> showAppOpenAdIfReady({int maxWaitSeconds = 8}) async {
+    // Cooldown: don't spam the user
     if (_lastAppOpenShown != null) {
       final diff = DateTime.now().difference(_lastAppOpenShown!).inMinutes;
-      if (diff < _appOpenCooldownMinutes) return;
+      if (diff < _appOpenCooldownMinutes) {
+        debugPrint('[AdService] App open ad cooldown ($diff/${_appOpenCooldownMinutes}min), skipping');
+        return;
+      }
     }
 
-    if (!await _canShowAd()) return;
+    if (!await _canShowAd()) {
+      debugPrint('[AdService] Daily ad limit reached, skipping app open ad');
+      return;
+    }
 
+    // If the ad is still loading, wait for it (up to maxWaitSeconds)
+    if (_appOpenAd == null && _isLoadingAppOpen) {
+      debugPrint('[AdService] App open ad is loading, waiting up to ${maxWaitSeconds}s…');
+      final deadline = DateTime.now().add(Duration(seconds: maxWaitSeconds));
+      while (_isLoadingAppOpen && DateTime.now().isBefore(deadline)) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    }
+
+    // Check if ad is available
     final ad = _appOpenAd;
     if (ad == null) {
+      debugPrint('[AdService] No app open ad available after wait, preloading for next time');
       _preloadAppOpen();
       return;
     }
 
+    // Discard expired ads (loaded too long ago)
+    if (_isAppOpenAdExpired()) {
+      debugPrint('[AdService] App open ad expired (loaded $_appOpenAdLoadTime), reloading');
+      ad.dispose();
+      _appOpenAd = null;
+      _appOpenAdLoadTime = null;
+      _preloadAppOpen();
+      return;
+    }
+
+    debugPrint('[AdService] Showing app open ad now');
+
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
+        debugPrint('[AdService] App open ad dismissed');
         ad.dispose();
         _appOpenAd = null;
+        _appOpenAdLoadTime = null;
         _preloadAppOpen();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
+        debugPrint('[AdService] App open ad failed to show: $error');
         ad.dispose();
         _appOpenAd = null;
+        _appOpenAdLoadTime = null;
         _preloadAppOpen();
       },
       onAdShowedFullScreenContent: (_) {
-        _appOpenShownThisSession = true;
         _lastAppOpenShown = DateTime.now();
         _incrementAdCount();
-        debugPrint('[AdService] App open ad showing');
+        debugPrint('[AdService] ✅ App open ad showing');
       },
     );
 

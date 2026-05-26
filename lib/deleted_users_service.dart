@@ -110,18 +110,16 @@ class DeletedUsersService {
     final email = user.email ?? '';
     final now = DateTime.now();
 
-    // 1. Delete all face scan images from Firebase Storage
-    // This ensures user's biometric data (face photos) is removed immediately
+    // 1. Delete all face scan images from Firebase Storage (recursive)
+    // This ensures user's biometric data (face photos) is removed immediately,
+    // including any nested sub-folders under the user's storage path.
     try {
       final storageRef = FirebaseStorage.instanceFor(
               bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app')
           .ref()
           .child('users/$uid/scans');
-      final ListResult result = await storageRef.listAll();
-      for (final item in result.items) {
-        await item.delete();
-      }
-      debugPrint('Deleted ${result.items.length} scan images for UID: $uid');
+      final count = await _deleteStorageRecursive(storageRef);
+      debugPrint('Deleted $count scan images for UID: $uid');
     } catch (e) {
       debugPrint('Storage cleanup failed (non-fatal): $e');
     }
@@ -173,6 +171,28 @@ class DeletedUsersService {
     } catch (e) {
       debugPrint('Error cleaning up deleted user data: $e');
     }
+  }
+
+  /// Recursively deletes all files under a Firebase Storage [ref],
+  /// including files in nested sub-folders (prefixes).
+  /// Returns the total number of files deleted.
+  static Future<int> _deleteStorageRecursive(Reference ref) async {
+    int deleted = 0;
+    try {
+      final ListResult result = await ref.listAll();
+      // Delete all files at this level
+      for (final item in result.items) {
+        await item.delete();
+        deleted++;
+      }
+      // Recurse into sub-folders
+      for (final prefix in result.prefixes) {
+        deleted += await _deleteStorageRecursive(prefix);
+      }
+    } catch (e) {
+      debugPrint('Recursive storage delete error at ${ref.fullPath}: $e');
+    }
+    return deleted;
   }
 
   /// Deletes all documents in a subcollection.

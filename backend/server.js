@@ -232,6 +232,15 @@ app.post(
       // 🔥 THE 50/50 HYBRID PROMPT (PSL + APPEAL)
       const prompt = `You are an elite facial aesthetics analysis AI. Your scoring system MUST strictly follow a 50/50 hybrid model.
 
+CRITICAL PRE-CHECK (HUMAN FACE VERIFICATION):
+Before performing any analysis, you MUST verify if the uploaded photo(s) contain a clear, identifiable human face.
+If the photo does not contain a human face (for example, if it is a hand, a foot, an animal, an object, scenery, blank space, text, or if the face is completely obscured), you MUST return EXACTLY this JSON and nothing else:
+{
+  "error": "No clear human face detected. Please upload a clear photo of your face."
+}
+
+If a human face is present, proceed with the analysis.
+
 THE 50/50 SCORING FORMULA:
 Your final scores must be an equal blend of two metrics:
 1. 50% Objective PSL (Scientific/Mathematical): Bone structure, midface ratio, interpupillary distance, zygomatic prominence, gonial angle, canthal tilt, and extreme biological dimorphism.
@@ -371,6 +380,11 @@ Return EXACTLY this JSON. No extra text.
         console.error('JSON parse failed. Raw text:', rawText.substring(0, 200));
         filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
         return res.status(500).json({ success: false, error: 'AI returned an invalid response. Please try again.' });
+      }
+
+      if (parsed.error) {
+        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        return res.status(400).json({ success: false, error: parsed.error });
       }
 
       // Validate and clamp all required numeric fields (defaults to 50 if missing/NaN)

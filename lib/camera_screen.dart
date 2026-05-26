@@ -45,6 +45,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
   int _currentStep = 0;
   
   bool _isAnalyzing = false;
+  bool _showingAd = false;
 
   // ── Scan loading animation state ──
   double _scanProgress = 0.0;
@@ -69,14 +70,17 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
     _statusIndex = 0;
     _completionMessage = null;
     _progressTimer?.cancel();
-    _progressTimer = Timer.periodic(const Duration(milliseconds: 400), (timer) {
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 350), (timer) {
       if (!mounted) { timer.cancel(); return; }
       setState(() {
-        // Progress caps at 92% — the remaining 8% jumps to 100 on completion
-        if (_scanProgress < 0.92) {
-          _scanProgress += 0.012 + (0.005 * (1 - _scanProgress)); // slows as it nears end
+        // Progress caps at 95% — the remaining 5% jumps to 100 on completion
+        if (_scanProgress < 0.95) {
+          // Faster early on, gradually slows as it approaches the cap
+          final boost = _scanProgress < 0.5 ? 0.02 : 0.008;
+          _scanProgress += boost + (0.004 * (1 - _scanProgress));
+          if (_scanProgress > 0.95) _scanProgress = 0.95;
         }
-        // Cycle status messages roughly every 2.5s
+        // Cycle status messages roughly every 2s
         final newIndex = (_scanProgress * _statusMessages.length).floor().clamp(0, _statusMessages.length - 1);
         if (newIndex != _statusIndex) _statusIndex = newIndex;
       });
@@ -159,6 +163,8 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       final XFile? photo = await _picker.pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.front,
+        maxWidth: 1024,
+        maxHeight: 1024,
         imageQuality: 80,
       );
 
@@ -177,6 +183,8 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
     try {
       final XFile? photo = await _picker.pickImage(
         source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
         imageQuality: 80,
       );
 
@@ -304,6 +312,16 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       throw Exception('Server error. Please try again later.');
     }
 
+    if (response.statusCode == 400) {
+      try {
+        final body = jsonDecode(responseBody) as Map<String, dynamic>;
+        throw Exception(body['error'] ?? 'Please upload a clear, well-lit photo of your face.');
+      } catch (e) {
+        if (e is Exception) rethrow;
+      }
+      throw Exception('Please upload a clear, well-lit photo of your face.');
+    }
+
     if (response.statusCode != 200) {
       throw Exception('Server error (HTTP ${response.statusCode}). Please try again later.');
     }
@@ -412,30 +430,43 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
 
           Future<String?> processImage(File? file, String type) async {
             if (file == null || !file.existsSync()) return null;
-            try {
-              debugPrint('[Storage] Starting upload for $type, file: ${file.path}');
-              final storageRef = FirebaseStorage.instanceFor(
-                      bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app')
-                  .ref()
-                  .child('users/$userId/scans/${timestamp}_$type.jpg');
-              await storageRef.putFile(file).timeout(const Duration(seconds: 60));
-              final url = await storageRef.getDownloadURL();
-              return url;
-            } catch (e) {
-              debugPrint('[Storage] UPLOAD FAILED ($type): $e');
-              return null;
+            const int maxRetries = 2;
+            for (int attempt = 0; attempt <= maxRetries; attempt++) {
+              try {
+                debugPrint('[Storage] Starting upload for $type (attempt ${attempt + 1}/${maxRetries + 1}), file: ${file.path}');
+                final storageRef = FirebaseStorage.instanceFor(
+                        bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app')
+                    .ref()
+                    .child('users/$userId/scans/${timestamp}_$type.jpg');
+                await storageRef.putFile(file).timeout(const Duration(seconds: 60));
+                final url = await storageRef.getDownloadURL();
+                // Validate the URL — never return a local file path
+                if (url.startsWith('https://')) {
+                  debugPrint('[Storage] Upload succeeded for $type: $url');
+                  return url;
+                }
+                // URL looks invalid (local path or non-https)
+                debugPrint('[Storage] Invalid URL returned for $type (attempt ${attempt + 1}): $url');
+              } catch (e) {
+                debugPrint('[Storage] UPLOAD FAILED ($type, attempt ${attempt + 1}): $e');
+              }
+              // Brief delay before retry
+              if (attempt < maxRetries) {
+                await Future.delayed(const Duration(seconds: 1));
+              }
             }
+            debugPrint('[Storage] All upload attempts exhausted for $type — skipping');
+            return null;
           }
 
           processedFront = await processImage(_frontImage, 'front');
           final String? processedSide = await processImage(_sideImage, 'side');
 
+          // Only include valid https:// URLs — never save local file paths to Firestore
           finalImagePaths = [
-            if (processedFront != null) processedFront
-            else if (_frontImage != null) _frontImage!.path,
-            if (processedSide != null) processedSide
-            else if (_sideImage != null) _sideImage!.path,
-          ].whereType<String>().toList();
+            if (processedFront != null) processedFront,
+            if (processedSide != null) processedSide,
+          ];
         } catch (e) {
           debugPrint('Image processing error (non-fatal): $e');
         }
@@ -461,9 +492,13 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
             ),
           );
         } else {
-          // Clear analyzing state BEFORE showing the ad so the progress bar
-          // doesn't flash back when the ad dismisses and Flutter repaints.
-          setState(() => _isAnalyzing = false);
+          // Keep the analyzing overlay visible (with "Preparing results" message)
+          // so the camera step UI doesn't flash behind the ad.
+          setState(() {
+            _isAnalyzing = false;
+            _showingAd = true;
+            _completionMessage = '✓ Preparing results…';
+          });
 
           await AdService().showScanAd(onComplete: () {
             if (!mounted) return;
@@ -487,6 +522,7 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
       if (!mounted) return;
       setState(() {
         _isAnalyzing = false;
+        _showingAd = false;
         _errorMessage = _cleanErrorMessage(e);
       });
     }
@@ -509,12 +545,12 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
     final step = _steps[_currentStep];
     final isRequired = step['required'] == 'true';
 
-    // Shows either the loading spinner OR the Try Again error screen
-    if (_isAnalyzing || _errorMessage != null) {
+    // Shows either the loading spinner, ad waiting state, OR the Try Again error screen
+    if (_isAnalyzing || _showingAd || _errorMessage != null) {
       return Scaffold(
         backgroundColor: const Color(0xFF0A0A0A),
         body: Center(
-          child: _isAnalyzing
+          child: (_isAnalyzing || _showingAd)
               ? Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 40),
                   child: Column(

@@ -85,7 +85,11 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
       backgroundColor: const Color(0xFF0A0A0A),
       body: CustomScrollView(slivers: [
         SliverAppBar(
-          backgroundColor: const Color(0xFF0A0A0A), floating: true, automaticallyImplyLeading: false,
+          backgroundColor: const Color(0xFF0A0A0A), floating: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
           title: const Text('Your Results', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold, fontSize: 18)),
           centerTitle: true,
         ),
@@ -133,7 +137,13 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             ),
           ),
           const SizedBox(height: 28),
-          Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 36),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              16, 
+              0, 
+              16, 
+              math.max(24.0, MediaQuery.of(context).padding.bottom + 16.0)
+            ),
             child: SizedBox(width: double.infinity, child: ElevatedButton.icon(
               onPressed: () => Navigator.pop(context), // Safely returns to Home tab
               icon: const Icon(Icons.check, size: 18),

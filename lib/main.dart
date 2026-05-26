@@ -198,11 +198,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       AdService().clearOnSignOut();
     }
 
-    // Show app open ad after 2s delay so the ad has time to preload.
-    // Only once per session, only for free users, only if already signed in.
-    // If the user is on the login screen (no user), skip — the ad will be
-    // triggered after login navigates to MainNavigation instead.
-    Future.delayed(const Duration(seconds: 2), () async {
+    // Show app open ad for returning free users.
+    // The ad service has built-in wait logic: if the ad is still loading,
+    // it waits up to 8s before giving up. So we only need a tiny delay
+    // to let the UI settle after the splash screen.
+    Future.delayed(const Duration(milliseconds: 500), () async {
       try {
         final currentUser = FirebaseAuth.instance.currentUser;
         if (currentUser == null) {
