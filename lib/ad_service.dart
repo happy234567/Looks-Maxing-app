@@ -22,12 +22,16 @@ class AdService {
   // ── Config ─────────────────────────────────────────────────────────────────
   static const int _maxAdsPerDay   = 5;
   static const int _appOpenCooldownMinutes = 10;
+  static const int _maxRetries = 3;
+  static const int _retryBaseSeconds = 30; // 30s, 60s, 90s backoff
 
   // ── State ──────────────────────────────────────────────────────────────────
   RewardedAd? _rewardedAd;
   AppOpenAd?  _appOpenAd;
   bool _isLoadingRewarded = false;
   bool _isLoadingAppOpen  = false;
+  int  _rewardedRetryCount = 0;
+  int  _appOpenRetryCount  = 0;
   DateTime? _lastAppOpenShown;
   bool _initialized = false;
 
@@ -69,6 +73,8 @@ class AdService {
     _appOpenAdLoadTime = null;
     _isLoadingRewarded = false;
     _isLoadingAppOpen  = false;
+    _rewardedRetryCount = 0;
+    _appOpenRetryCount  = 0;
 
     // Preload fresh ads for the new user
     _preloadRewarded();
@@ -88,6 +94,8 @@ class AdService {
     _appOpenAdLoadTime = null;
     _isLoadingRewarded = false;
     _isLoadingAppOpen  = false;
+    _rewardedRetryCount = 0;
+    _appOpenRetryCount  = 0;
   }
 
   // ── Daily Ad Count (Firestore, per-user) ───────────────────────────────────
@@ -143,6 +151,7 @@ class AdService {
   /// is ready by the time results arrive. No-op if one is already loaded.
   void preloadRewardedNow() {
     if (_rewardedAd != null || _isLoadingRewarded) return;
+    _rewardedRetryCount = 0; // reset on explicit preload
     debugPrint('[AdService] Early preload requested — loading rewarded ad');
     _preloadRewarded();
   }
@@ -158,19 +167,25 @@ class AdService {
         onAdLoaded: (ad) {
           _rewardedAd = ad;
           _isLoadingRewarded = false;
+          _rewardedRetryCount = 0;
           debugPrint('[AdService] ✅ Rewarded Ad loaded');
         },
         onAdFailedToLoad: (error) {
           _rewardedAd = null;
           _isLoadingRewarded = false;
           debugPrint('[AdService] ❌ Rewarded Ad failed: $error');
-          // Retry after a short delay
-          Future.delayed(const Duration(seconds: 10), () {
-            if (_rewardedAd == null && !_isLoadingRewarded) {
-              debugPrint('[AdService] Retrying rewarded ad load…');
-              _preloadRewarded();
-            }
-          });
+          if (_rewardedRetryCount < _maxRetries) {
+            _rewardedRetryCount++;
+            final delay = Duration(seconds: _retryBaseSeconds * _rewardedRetryCount);
+            debugPrint('[AdService] Retrying rewarded ad in ${delay.inSeconds}s (attempt $_rewardedRetryCount/$_maxRetries)');
+            Future.delayed(delay, () {
+              if (_rewardedAd == null && !_isLoadingRewarded) {
+                _preloadRewarded();
+              }
+            });
+          } else {
+            debugPrint('[AdService] Rewarded ad retries exhausted ($_maxRetries), will reload on next trigger');
+          }
         },
       ),
     );
@@ -248,6 +263,7 @@ class AdService {
           _appOpenAd = ad;
           _appOpenAdLoadTime = DateTime.now();
           _isLoadingAppOpen = false;
+          _appOpenRetryCount = 0;
           debugPrint('[AdService] ✅ App open ad loaded');
         },
         onAdFailedToLoad: (error) {
@@ -255,13 +271,18 @@ class AdService {
           _appOpenAdLoadTime = null;
           _isLoadingAppOpen = false;
           debugPrint('[AdService] ❌ App open ad failed: $error');
-          // Retry after a short delay
-          Future.delayed(const Duration(seconds: 10), () {
-            if (_appOpenAd == null && !_isLoadingAppOpen) {
-              debugPrint('[AdService] Retrying app open ad load…');
-              _preloadAppOpen();
-            }
-          });
+          if (_appOpenRetryCount < _maxRetries) {
+            _appOpenRetryCount++;
+            final delay = Duration(seconds: _retryBaseSeconds * _appOpenRetryCount);
+            debugPrint('[AdService] Retrying app open ad in ${delay.inSeconds}s (attempt $_appOpenRetryCount/$_maxRetries)');
+            Future.delayed(delay, () {
+              if (_appOpenAd == null && !_isLoadingAppOpen) {
+                _preloadAppOpen();
+              }
+            });
+          } else {
+            debugPrint('[AdService] App open ad retries exhausted ($_maxRetries), will reload on next trigger');
+          }
         },
       ),
     );
