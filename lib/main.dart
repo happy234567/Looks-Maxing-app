@@ -19,11 +19,29 @@ import 'scan_cooldown_service.dart';
 import 'deleted_users_service.dart';
 import 'dart:ui';
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'ad_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'user_sync_service.dart';
+
+/// Global Firebase Analytics instance — initialized once during app startup.
+/// Use [logAnalyticsEvent] for custom event logging from anywhere.
+late final FirebaseAnalytics analytics;
+late final FirebaseAnalyticsObserver analyticsObserver;
+
+/// Log a custom event to Firebase Analytics.
+/// Example: logAnalyticsEvent('scan_completed', {'overall_score': 85, 'has_side_photo': true});
+Future<void> logAnalyticsEvent(String name, [Map<String, Object>? params]) async {
+  try {
+    await analytics.logEvent(name: name, parameters: params);
+    debugPrint('[Analytics] Logged event: $name');
+  } catch (e) {
+    debugPrint('[Analytics] Failed to log event: $e');
+  }
+}
 
 void main() {
   runZonedGuarded(() async {
@@ -92,6 +110,7 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -113,6 +132,26 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _initApp() async {
+    // 1. Check for internet connectivity first!
+    bool hasInternet = true;
+    try {
+      final result = await InternetAddress.lookup('google.com').timeout(const Duration(seconds: 5));
+      if (result.isEmpty || result[0].rawAddress.isEmpty) {
+        hasInternet = false;
+      }
+    } catch (_) {
+      hasInternet = false;
+    }
+
+    if (!hasInternet) {
+      if (mounted) {
+        setState(() {
+          _isOffline = true;
+        });
+      }
+      return; // Stop initialization
+    }
+
     // 2. WAKE UP FIREBASE SECOND (with timeout)
     try {
       await Firebase.initializeApp().timeout(
@@ -121,6 +160,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       );
     } catch (e) {
       debugPrint("Firebase init failed: $e");
+    }
+
+    // 2b. Initialize Firebase Analytics (auto screen tracking via observer)
+    try {
+      analytics = FirebaseAnalytics.instance;
+      analyticsObserver = FirebaseAnalyticsObserver(analytics: analytics);
+      debugPrint('[Analytics] Firebase Analytics initialized');
+    } catch (e) {
+      debugPrint('[Analytics] Init failed: $e');
     }
 
     try {
@@ -324,18 +372,42 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               ),
             ),
             const SizedBox(height: 48),
-            // Loading indicator
-            SizedBox(
-              width: 160,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: const LinearProgressIndicator(
-                  minHeight: 3,
-                  backgroundColor: Color(0xFF1A1A1A),
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFFD700)),
+            // Loading indicator or Offline message
+            if (_isOffline)
+              Column(
+                children: [
+                  const Text(
+                    'Connect to internet to open the app',
+                    style: TextStyle(color: Colors.redAccent, fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFD700),
+                      foregroundColor: Colors.black,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isOffline = false;
+                      });
+                      _initApp();
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              )
+            else
+              SizedBox(
+                width: 160,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: const LinearProgressIndicator(
+                    minHeight: 3,
+                    backgroundColor: Color(0xFF1A1A1A),
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFFD700)),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -354,6 +426,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
       navigatorKey: navigatorKey,
+      navigatorObservers: [analyticsObserver],
       onGenerateRoute: (settings) {
         if (settings.name == '/main') {
           final tabIndex = settings.arguments as int? ?? 0;

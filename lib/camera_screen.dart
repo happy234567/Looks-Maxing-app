@@ -13,6 +13,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'ad_service.dart';
+import 'main.dart' show logAnalyticsEvent;
 
 /// Strips the "Exception: " prefix from error messages for cleaner UX.
 String _cleanErrorMessage(dynamic error) {
@@ -476,6 +477,14 @@ class _CameraScreenState extends State<CameraScreen> with SingleTickerProviderSt
         } catch (e) {
           debugPrint('Failed to save scan history: $e');
         }
+
+        // Log scan completion to Firebase Analytics
+        logAnalyticsEvent('scan_completed', {
+          'overall_score': scores['overall'] ?? 0,
+          'photo_count': finalImagePaths.length,
+          'has_side_photo': _sideImage != null,
+          'is_premium': BillingService().isPremium,
+        });
 
         if (!mounted) return;
 

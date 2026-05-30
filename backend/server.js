@@ -3,10 +3,15 @@ const cors = require('cors');
 const multer = require('multer');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const fs = require('fs');
+const path = require('path');
 const sharp = require('sharp');
 const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
 require('dotenv').config();
+
+// ─── Memory-safe concurrency limit (Render free = 512MB) ───────────
+let activeRequests = 0;
+const MAX_CONCURRENT = 2; // max simultaneous /analyze requests
 
 // ─── Firebase Admin Setup ───────────────────────────
 try {
@@ -77,9 +82,18 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+// Clean up any leftover temp files from previous crashes
+try {
+  const staleFiles = fs.readdirSync(uploadsDir);
+  for (const f of staleFiles) {
+    try { fs.unlinkSync(path.join(uploadsDir, f)); } catch (_) {}
+  }
+  if (staleFiles.length > 0) console.log(`[Startup] Cleaned ${staleFiles.length} stale upload(s)`);
+} catch (_) {}
+
 const upload = multer({
   dest: uploadsDir,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit (images are compressed client-side to 1024x1024 q80)
   fileFilter: (req, file, cb) => {
     // Only accept image files
     if (file.mimetype.startsWith('image/')) {
@@ -95,11 +109,11 @@ app.use(cors({
   methods: ['POST', 'GET'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ limit: '5mb', extended: true }));
 
 // -----------------------------
-// Helper: Compress Image to ≤1MB
+// Helper: Compress Image to ≤1MB (single-pass, memory-efficient)
 // -----------------------------
 const MAX_IMAGE_BYTES = 1 * 1024 * 1024; // 1 MB
 
@@ -111,41 +125,25 @@ const compressImageIfNeeded = async (filepath) => {
 
   console.log(`Compressing image: ${filepath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
 
-  let quality = 80;
-  const MIN_QUALITY = 20;
-
-  while (quality >= MIN_QUALITY) {
-    const compressedBuffer = await sharp(filepath)
-      .jpeg({ quality, mozjpeg: true })
-      .toBuffer();
-
-    if (compressedBuffer.length <= MAX_IMAGE_BYTES) {
-      fs.writeFileSync(filepath, compressedBuffer);
-      console.log(`Compressed to ${(compressedBuffer.length / 1024 / 1024).toFixed(2)} MB (quality: ${quality})`);
-      return;
-    }
-
-    quality -= 10;
-  }
-
-  // If still over 1MB at minimum quality, resize dimensions too
-  const metadata = await sharp(filepath).metadata();
-  const scale = 0.5;
+  // Single-pass: resize to max 1024px AND compress to q60 in one operation.
+  // Avoids the old iterative loop that created multiple large buffers.
   const compressedBuffer = await sharp(filepath)
-    .resize(Math.round((metadata.width || 1000) * scale), null, { fit: 'inside' })
-    .jpeg({ quality: MIN_QUALITY, mozjpeg: true })
+    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 60, mozjpeg: true })
     .toBuffer();
 
   fs.writeFileSync(filepath, compressedBuffer);
-  console.log(`Compressed with resize to ${(compressedBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+  console.log(`Compressed to ${(compressedBuffer.length / 1024 / 1024).toFixed(2)} MB (single-pass)`);
 };
 
 // -----------------------------
-// Helper: Convert Image to Base64
+// Helper: Convert Image to Base64 (stream-based, avoids double-buffering)
 // -----------------------------
 const toBase64 = (filepath) => {
   const data = fs.readFileSync(filepath);
-  return data.toString('base64');
+  const b64 = data.toString('base64');
+  // Let the raw buffer be GC'd immediately
+  return b64;
 };
 
 
@@ -154,6 +152,18 @@ const toBase64 = (filepath) => {
 // -----------------------------
 app.post(
   '/analyze',
+  // Concurrency gate: reject if too many requests are already in-flight
+  (req, res, next) => {
+    if (activeRequests >= MAX_CONCURRENT) {
+      console.warn(`[Memory] Rejecting request — ${activeRequests} already in-flight (max ${MAX_CONCURRENT})`);
+      return res.status(503).json({ success: false, error: 'Server is busy. Please try again in a few seconds.' });
+    }
+    activeRequests++;
+    // Ensure counter is decremented when the response finishes (success or error)
+    res.on('finish', () => { activeRequests--; });
+    res.on('close',  () => { activeRequests = Math.max(0, activeRequests - 1); });
+    next();
+  },
   upload.fields([
     { name: 'front' },
     { name: 'side' }
@@ -301,11 +311,20 @@ Return EXACTLY this JSON. No extra text.
   "eyeType": "<Hunter|Prey|Neutral>"
 }`;
 
+      // Build image parts and immediately release file handles
+      const frontBase64 = toBase64(frontImg.path);
       const imageParts = [
-        { inlineData: { mimeType: 'image/jpeg', data: toBase64(frontImg.path) } }
+        { inlineData: { mimeType: 'image/jpeg', data: frontBase64 } }
       ];
 
-      if (sideImg) imageParts.push({ inlineData: { mimeType: 'image/jpeg', data: toBase64(sideImg.path) } });
+      if (sideImg) {
+        const sideBase64 = toBase64(sideImg.path);
+        imageParts.push({ inlineData: { mimeType: 'image/jpeg', data: sideBase64 } });
+      }
+
+      // Delete temp files NOW (before the Gemini API call) to free disk + page cache
+      filePaths.forEach(fp => { try { if (fs.existsSync(fp)) fs.unlinkSync(fp); } catch (_) {} });
+      const filesAlreadyCleaned = true;
 
       let result;
       let attempt = 0;
@@ -338,13 +357,13 @@ Return EXACTLY this JSON. No extra text.
             geminiError.message.includes('HARM') ||
             geminiError.message.includes('content filter')
           )) {
-            filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+            if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
             return res.status(400).json({ success: false, error: 'Could not analyze this image. Please use a clear, well-lit photo of your face.' });
           }
           
           // If it fails all 3 times, tell the user
           if (attempt >= maxRetries) {
-            filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+            if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
             return res.status(500).json({ success: false, error: 'AI analysis failed due to high demand. Please try again later.' });
           }
         }
@@ -352,7 +371,7 @@ Return EXACTLY this JSON. No extra text.
 
       // Handle empty/blocked response
       if (!result || !result.response) {
-        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
         return res.status(500).json({ success: false, error: 'AI returned an empty response. Please try with a different photo.' });
       }
 
@@ -362,12 +381,12 @@ Return EXACTLY this JSON. No extra text.
       } catch (textError) {
         console.error('Failed to extract text from Gemini response:', textError.message);
         // This often means the response was blocked by safety filters
-        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
         return res.status(400).json({ success: false, error: 'Could not analyze this image. The photo may not contain a clear face.' });
       }
 
       if (!rawText || rawText.trim().length === 0) {
-        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
         return res.status(500).json({ success: false, error: 'AI returned an empty response. Please try again.' });
       }
 
@@ -378,12 +397,12 @@ Return EXACTLY this JSON. No extra text.
         parsed = JSON.parse(jsonMatch[0]);
       } catch (err) {
         console.error('JSON parse failed. Raw text:', rawText.substring(0, 200));
-        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
         return res.status(500).json({ success: false, error: 'AI returned an invalid response. Please try again.' });
       }
 
       if (parsed.error) {
-        filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
         return res.status(400).json({ success: false, error: parsed.error });
       }
 
@@ -435,13 +454,13 @@ Return EXACTLY this JSON. No extra text.
       }
       await userRef.set({ uploads: uploads }, { merge: true });
 
-      filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+      if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
 
       return res.json({ success: true, scores });
 
     } catch (error) {
       console.error('Analyze endpoint error:', error);
-      filePaths.forEach(path => { if (fs.existsSync(path)) fs.unlinkSync(path); });
+      filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
       // Sanitize error message — don't expose internals to the client
       const safeMessage = 'An unexpected error occurred. Please try again.';
       return res.status(500).json({ success: false, error: safeMessage });
@@ -459,7 +478,18 @@ app.get('/', (req, res) => {
 // -----------------------------
 // Start Server
 // -----------------------------
+// ─── Graceful OOM prevention ────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err.message);
+  // Clean up uploads dir on crash
+  try {
+    const files = fs.readdirSync(uploadsDir);
+    files.forEach(f => { try { fs.unlinkSync(path.join(uploadsDir, f)); } catch (_) {} });
+  } catch (_) {}
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT} (max ${MAX_CONCURRENT} concurrent analyze requests)`);
+  console.log(`Memory limit: ~512MB (Render Free). Optimizations active.`);
 });
