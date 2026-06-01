@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { VertexAI } = require('@google-cloud/vertexai');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
@@ -69,8 +69,14 @@ const analyzeLimiter = rateLimit({
 
 app.use('/analyze', authGuard, analyzeLimiter);
 
-// ─── Gemini Initialization ───────────────────────────
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// ─── Vertex AI Initialization ───────────────────────────
+// Uses Application Default Credentials (ADC) — no API key needed.
+// Set GOOGLE_APPLICATION_CREDENTIALS env var to your service account key JSON,
+// or rely on the default service account when running on Google Cloud.
+const vertexAI = new VertexAI({
+  project: process.env.GOOGLE_CLOUD_PROJECT || 'looks-maxing-app-a8f7c',
+  location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
+});
 
 // -----------------------------
 // Multer Setup
@@ -231,7 +237,7 @@ app.post(
         await compressImageIfNeeded(fp);
       }
 
-      const model = genAI.getGenerativeModel({
+      const model = vertexAI.getGenerativeModel({
         model: 'gemini-2.5-flash',
         generationConfig: {
           temperature: 0,
@@ -336,6 +342,8 @@ Return EXACTLY this JSON. No extra text.
           result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }]
           });
+          // Vertex AI SDK returns a response wrapper; unwrap it
+          result = result.response;
           success = true; // It worked! Break the loop.
         } catch (geminiError) {
           attempt++;
@@ -370,14 +378,17 @@ Return EXACTLY this JSON. No extra text.
       }
 
       // Handle empty/blocked response
-      if (!result || !result.response) {
+      if (!result) {
         if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
         return res.status(500).json({ success: false, error: 'AI returned an empty response. Please try with a different photo.' });
       }
 
       let rawText;
       try {
-        rawText = result.response.text();
+        // Vertex AI SDK: text() may be a method on the response object directly
+        const candidates = result.candidates;
+        if (!candidates || candidates.length === 0) throw new Error('No candidates in response');
+        rawText = candidates[0].content?.parts?.map(p => p.text).join('') || '';
       } catch (textError) {
         console.error('Failed to extract text from Gemini response:', textError.message);
         // This often means the response was blocked by safety filters
