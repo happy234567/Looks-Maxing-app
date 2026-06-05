@@ -67,7 +67,19 @@ const analyzeLimiter = rateLimit({
   },
 });
 
+const foodAnalyzeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes per IP
+  max: 30, // 30 requests
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many requests, please try again later.' },
+  keyGenerator: (req) => {
+    return req.user?.uid || req.ip;
+  },
+});
+
 app.use('/analyze', authGuard, analyzeLimiter);
+app.use('/food-analyze', authGuard, foodAnalyzeLimiter);
 
 // ─── Vertex AI Initialization ───────────────────────────
 // Uses Application Default Credentials (ADC) — no API key needed.
@@ -100,21 +112,9 @@ try {
 const upload = multer({
   dest: uploadsDir,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit (images are compressed client-side to 1024x1024 q80)
-  fileFilter: (req, file, cb) => {
-    // Only accept image files
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'), false);
-    }
-  }
 });
 
-app.use(cors({
-  origin: ['https://level-maxing-backend.onrender.com'],
-  methods: ['POST', 'GET'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ limit: '5mb', extended: true }));
 
@@ -480,6 +480,201 @@ Return EXACTLY this JSON. No extra text.
 );
 
 // -----------------------------
+// Food Analyze Route
+// -----------------------------
+app.post(
+  '/food-analyze',
+  (req, res, next) => {
+    if (activeRequests >= MAX_CONCURRENT) {
+      console.warn(`[Memory] Rejecting food request — ${activeRequests} already in-flight (max ${MAX_CONCURRENT})`);
+      return res.status(503).json({ success: false, error: 'Server is busy. Please try again in a few seconds.' });
+    }
+    activeRequests++;
+    res.on('finish', () => { activeRequests--; });
+    res.on('close',  () => { activeRequests = Math.max(0, activeRequests - 1); });
+    // Handle multer errors explicitly
+    upload.single('frontImage')(req, res, (multerErr) => {
+      if (multerErr) {
+        console.error('[food-analyze] Multer error:', multerErr.message);
+        return res.status(400).json({ success: false, error: `Upload error: ${multerErr.message}` });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    console.log('[food-analyze] Handler entered. req.file:', !!req.file, 'req.user:', !!req.user);
+    let filePath = null;
+    try {
+      if (!req.user || !req.user.uid) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'frontImage is required.' });
+      }
+
+      filePath = req.file.path;
+      const mealType = req.body.mealType || 'snack';
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(400).json({ success: false, error: 'Failed to process uploaded image.' });
+      }
+
+      // Compress if needed
+      await compressImageIfNeeded(filePath);
+
+      const model = vertexAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: 'application/json'
+        }
+      });
+
+      const base64Data = toBase64(filePath);
+      const imagePart = {
+        inlineData: { mimeType: 'image/jpeg', data: base64Data }
+      };
+
+      const promptText = `You are a precise food recognition and portion estimation AI. Analyse this food photo carefully.
+
+The photo is taken from TOP DOWN showing the full portion on a plate or surface.
+
+Return ONLY valid JSON with no preamble, no markdown, no explanation. Just raw JSON.
+
+Identify ALL foods visible. For mixed dishes estimate total as one item.
+
+{
+  "foods": [
+    {
+      "name": "white rice cooked",
+      "estimated_grams": 180,
+      "confidence": "high"
+    },
+    {
+      "name": "dal toor cooked",
+      "estimated_grams": 120,
+      "confidence": "medium"
+    }
+  ],
+  "meal_description": "A plate of rice and dal",
+  "image_quality": "good"
+}
+
+Naming rules — use simple lowercase English names matching common food database names:
+- Use "cooked" suffix for cooked items (e.g. "white rice cooked", "chicken breast grilled")
+- Use Indian names where appropriate (e.g. "roti wheat", "dal moong", "paneer", "ghee")
+- List each distinct food separately
+- For a full thali, list each component separately
+- Estimate grams based on visual size — a standard roti = 40g, one cup rice = 180g, one egg = 55g
+
+If image does not contain food: {"foods": [], "meal_description": "No food detected", "image_quality": "no_food"}
+If image is too blurry: {"foods": [], "meal_description": "Image too blurry", "image_quality": "poor"}`;
+
+      // Clean up temp file before model invocation to free space/cache
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          filePath = null;
+        }
+      } catch (err) {
+        console.error('Failed to unlink file early:', err);
+      }
+
+      let result;
+      let attempt = 0;
+      let maxRetries = 3;
+      let success = false;
+
+      while (attempt < maxRetries && !success) {
+        try {
+          const geminiResponse = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: promptText }, imagePart] }]
+          });
+          result = geminiResponse.response;
+          success = true;
+        } catch (geminiError) {
+          attempt++;
+          console.error(`Gemini API error (Attempt ${attempt}):`, geminiError.message || geminiError);
+          if (geminiError.message && geminiError.message.includes('503')) {
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              continue;
+            }
+          }
+          if (attempt >= maxRetries) {
+            return res.status(500).json({ success: false, error: 'AI analysis failed due to high demand. Please try again later.' });
+          }
+        }
+      }
+
+      if (!result) {
+        return res.status(500).json({ success: false, error: 'AI returned an empty response. Please try with a different photo.' });
+      }
+
+      let rawText;
+      try {
+        const candidates = result.candidates;
+        if (!candidates || candidates.length === 0) throw new Error('No candidates in response');
+        rawText = candidates[0].content?.parts?.map(p => p.text).join('') || '';
+      } catch (textError) {
+        console.error('Failed to extract text from Gemini response:', textError.message);
+        return res.status(400).json({ success: false, error: 'Could not analyze this image. The photo may not contain food.' });
+      }
+
+      if (!rawText || rawText.trim().length === 0) {
+        return res.status(500).json({ success: false, error: 'AI returned an empty response. Please try again.' });
+      }
+
+      let parsed;
+      try {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("No valid JSON found");
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch (err) {
+        console.error('JSON parse failed. Raw text:', rawText.substring(0, 200));
+        return res.status(500).json({ success: false, error: 'AI returned an invalid response. Please try again.' });
+      }
+
+      return res.json({
+        success: true,
+        foods: parsed.foods || [],
+        meal_description: parsed.meal_description || '',
+        mealType: mealType
+      });
+
+    } catch (error) {
+      console.error('Food-analyze endpoint error:', error);
+      if (filePath && fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (_) {}
+      }
+      // Include actual error message for debugging
+      const debugMsg = error && error.message ? error.message : String(error);
+      console.error('Food-analyze FULL error:', debugMsg);
+      return res.status(500).json({ success: false, error: `Server error: ${debugMsg.substring(0, 200)}` });
+    }
+  }
+);
+
+// -----------------------------
+// Diagnostic endpoint (no auth needed)
+// -----------------------------
+app.get('/food-analyze-test', (req, res) => {
+  try {
+    const model = vertexAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    res.json({
+      success: true,
+      message: 'food-analyze route is live',
+      modelReady: !!model,
+      nodeVersion: process.version,
+      memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024)
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -----------------------------
 // Root Route
 // -----------------------------
 app.get('/', (req, res) => {
@@ -487,6 +682,18 @@ app.get('/', (req, res) => {
 });
 
 // -----------------------------
+// Global JSON error handler (catches Express/middleware errors)
+// Must have 4 args for Express to recognize it as error handler
+app.use((err, req, res, next) => {
+  console.error('[GLOBAL ERROR HANDLER]', err.message || err);
+  if (!res.headersSent) {
+    res.status(err.status || 500).json({
+      success: false,
+      error: `Server error: ${(err.message || 'Unknown error').substring(0, 300)}`
+    });
+  }
+});
+
 // Start Server
 // -----------------------------
 // ─── Graceful OOM prevention ────────────────────────────────────

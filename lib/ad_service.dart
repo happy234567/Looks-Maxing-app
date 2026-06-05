@@ -35,6 +35,11 @@ class AdService {
   DateTime? _lastAppOpenShown;
   bool _initialized = false;
 
+  // Food scan interstitial
+  static const String _foodInterstitialId = 'ca-app-pub-1840880800077412/4819448534';
+  InterstitialAd? _foodInterstitialAd;
+  bool _isLoadingFoodInterstitial = false;
+
   /// Timestamp when the app open ad was loaded. Ads expire after ~4 hours;
   /// we conservatively discard after 3 hours to avoid showing stale ads.
   DateTime? _appOpenAdLoadTime;
@@ -52,6 +57,7 @@ class AdService {
     debugPrint('[AdService] Initialized for user=$_activeUserId');
     _preloadRewarded();
     _preloadAppOpen();
+    preloadFoodInterstitial();
   }
 
   // ── Account-scoped reset ─────────────────────────────────────────────────
@@ -76,9 +82,14 @@ class AdService {
     _rewardedRetryCount = 0;
     _appOpenRetryCount  = 0;
 
+    _foodInterstitialAd?.dispose();
+    _foodInterstitialAd = null;
+    _isLoadingFoodInterstitial = false;
+
     // Preload fresh ads for the new user
     _preloadRewarded();
     _preloadAppOpen();
+    preloadFoodInterstitial();
   }
 
   /// Call on sign-out to immediately clear all ad state.
@@ -96,6 +107,10 @@ class AdService {
     _isLoadingAppOpen  = false;
     _rewardedRetryCount = 0;
     _appOpenRetryCount  = 0;
+
+    _foodInterstitialAd?.dispose();
+    _foodInterstitialAd = null;
+    _isLoadingFoodInterstitial = false;
   }
 
   // ── Daily Ad Count (Firestore, per-user) ───────────────────────────────────
@@ -366,6 +381,58 @@ class AdService {
       },
     );
 
+    await ad.show();
+  }
+
+  void preloadFoodInterstitial() {
+    if (_foodInterstitialAd != null || _isLoadingFoodInterstitial) return;
+    _isLoadingFoodInterstitial = true;
+    InterstitialAd.load(
+      adUnitId: _foodInterstitialId,
+      request: const AdRequest(),
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: (ad) {
+          _foodInterstitialAd = ad;
+          _isLoadingFoodInterstitial = false;
+        },
+        onAdFailedToLoad: (error) {
+          _foodInterstitialAd = null;
+          _isLoadingFoodInterstitial = false;
+          debugPrint('[AdService] Food interstitial failed: $error');
+        },
+      ),
+    );
+  }
+
+  Future<void> showFoodScanAd({required VoidCallback onComplete}) async {
+    final ad = _foodInterstitialAd;
+    _foodInterstitialAd = null;
+    if (ad == null) {
+      onComplete();
+      preloadFoodInterstitial();
+      return;
+    }
+    bool done = false;
+    void finish() {
+      if (!done) {
+        done = true;
+        preloadFoodInterstitial();
+        onComplete();
+      }
+    }
+
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        finish();
+      },
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        ad.dispose();
+        finish();
+      },
+      onAdShowedFullScreenContent: (_) => _incrementAdCount(),
+    );
+    Timer(const Duration(seconds: 30), finish);
     await ad.show();
   }
 }

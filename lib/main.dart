@@ -11,6 +11,7 @@ import 'scan_history.dart';
 import 'scan_detail_screen.dart';
 import 'lock_in_page.dart';
 import 'shop_page.dart';
+import 'food_log_page.dart';
 import 'guide_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'billing_service.dart';
@@ -461,6 +462,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final List<Widget> _pages = [
     const FaceRatingPage(),
+    const FoodLogPage(),
     const LockInPage(),
     const GuidePage(),
     const ShopPage(),
@@ -480,6 +482,8 @@ class _MainNavigationState extends State<MainNavigation> {
         items: const [
           BottomNavigationBarItem(
               icon: Icon(Icons.face), label: 'Face Rating'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.restaurant_menu_rounded), label: 'Food Log'),
           BottomNavigationBarItem(
               icon: Icon(Icons.lock), label: 'Lockin'),
           BottomNavigationBarItem(
