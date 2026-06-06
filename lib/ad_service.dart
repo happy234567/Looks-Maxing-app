@@ -35,8 +35,9 @@ class AdService {
   DateTime? _lastAppOpenShown;
   bool _initialized = false;
 
-  // Food scan interstitial
-  static const String _foodInterstitialId = 'ca-app-pub-1840880800077412/4819448534';
+  // Food scan interstitial (TEST ID — swap to production before release)
+  // PRODUCTION: 'ca-app-pub-1840880800077412/4819448534'
+  static const String _foodInterstitialId = 'ca-app-pub-3940256099942544/1033173712';
   InterstitialAd? _foodInterstitialAd;
   bool _isLoadingFoodInterstitial = false;
 

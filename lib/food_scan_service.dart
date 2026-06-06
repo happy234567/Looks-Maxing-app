@@ -6,8 +6,8 @@ class FoodScanCountService {
   static const int _premiumLimit = 10;
 
   static String? get _uid => FirebaseAuth.instance.currentUser?.uid;
-  static String get _countKey => 'food_scan_count_${_uid}';
-  static String get _dateKey => 'food_scan_date_${_uid}';
+  static String get _countKey => 'food_scan_count_$_uid';
+  static String get _dateKey => 'food_scan_date_$_uid';
   static String get _today => DateTime.now().toIso8601String().substring(0, 10);
 
   static Future<int> getCountToday() async {

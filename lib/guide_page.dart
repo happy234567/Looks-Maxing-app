@@ -947,7 +947,8 @@ class _WhyBuyPremiumSheet extends StatefulWidget {
 }
 
 class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
-  
+  String _selectedPlanId = 'premium_6month';
+
   @override
   void initState() {
     super.initState();
@@ -975,10 +976,16 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
     }
   }
 
-  String _getMonthlyBreakdown(ProductDetails? product, int months) {
-    if (product == null) return '';
-    double monthlyRaw = product.rawPrice / months;
-    return '${product.currencySymbol}${monthlyRaw.toStringAsFixed(0)}/month';
+  void _purchaseSelected() {
+    final prod = _getProduct(_selectedPlanId);
+    if (prod != null) {
+      widget.billingService.buySubscription(prod);
+    } else {
+      // Fallback: If not loaded, show error
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Products still loading or unavailable.')),
+      );
+    }
   }
 
   @override
@@ -992,444 +999,524 @@ class _WhyBuyPremiumSheetState extends State<_WhyBuyPremiumSheet> {
           color: Color(0xFF111111),
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: Column(children: [
-          Container(
-            margin: const EdgeInsets.only(top: 12, bottom: 4),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.white24,
-              borderRadius: BorderRadius.circular(2),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 4),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            
+            // Header actions (Close)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8, top: 0),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white54),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+            
+            // Scrollable Content
+            Expanded(
+              child: ListView(
+                controller: controller,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                children: [
+                  _buildHeaderSection(),
+                  const SizedBox(height: 32),
+                  _buildPricingCards(),
+                  const SizedBox(height: 32),
+                  _buildFeatureMatrix(),
+                  const SizedBox(height: 32),
+                  _buildChallengeCard(),
+                  const SizedBox(height: 32),
+                  _buildTrustCard(),
+                  const SizedBox(height: 32),
+                  _buildRestorePurchases(),
+                ],
+              ),
+            ),
+            
+            // Sticky Bottom Action
+            _buildStickyBottomAction(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderSection() {
+    return Column(
+      children: [
+        // Top Badge
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.5)),
+          ),
+          child: const Text(
+            '✦ Unlock Your Full Potential ✦',
+            style: TextStyle(
+              color: Color(0xFFFFD700),
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              letterSpacing: 1.0,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            child: Row(children: [
-              const Text('👑', style: TextStyle(fontSize: 26)),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'WHY BUY PREMIUM?',
-                  style: TextStyle(
-                    color: Color(0xFFFFD700),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white54),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ]),
+        ),
+        const SizedBox(height: 20),
+        
+        // Title
+        const Text(
+          'WHY BUY PREMIUM?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.5,
           ),
-          Container(
-              height: 1,
-              color: Colors.white10,
-              margin: const EdgeInsets.symmetric(
-                  horizontal: 20, vertical: 8)),
-          Expanded(
-            child: ListView(
-              controller: controller,
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
-              children: [
-                _premiumBlock(
-                  emoji: '🚀',
-                  title: 'Unlock Your Full Potential',
-                  body:
-                      'Get the knowledge, tools, and tracking system designed to help you improve consistently and see real progress.',
-                ),
-                _pricingBlock(),
-                _premiumBlock(
-                  emoji: '📚',
-                  title: 'Course-Level Guides',
-                  body: 'Premium gives you structured guides covering:',
-                  bullets: [
-                    'Facial improvement strategies',
-                    'Skincare & grooming routines',
-                    'Fitness & body improvement habits',
-                    'Confidence & mindset development',
-                    'Lifestyle habits that improve attractiveness',
-                  ],
-                  footer:
-                      'Instead of buying many expensive courses, everything is organized in one app.',
-                ),
-                _premiumBlock(
-                  emoji: '📈',
-                  title: 'Track Your Real Progress',
-                  body:
-                      'Most courses only give advice. Our Face Scan system shows if you are actually improving.',
-                  bullets: [
-                    'Weekly face scans',
-                    'Real improvement score',
-                    'Progress charts over time',
-                  ],
-                  footer: 'See your real progress instead of guessing.',
-                ),
-                _premiumBlock(
-                  emoji: '🎯',
-                  title: 'Daily Lock-In System',
-                  body:
-                      'Build discipline with the Daily To-Do / Lock-In system.',
-                  bullets: [
-                    'Create your own improvement tasks',
-                    'Stay consistent with routines',
-                    'Track your streaks and habits',
-                  ],
-                  footer: 'Available for both free and premium users.',
-                ),
-                _rewardsBlock(),
-                _premiumBlock(
-                  emoji: '⭐',
-                  title: 'Why Users Choose Premium',
-                  body: '',
-                  bullets: [
-                    'Influencer-level knowledge',
-                    'Real weekly progress tracking',
-                    'Structured improvement system',
-                    'Growing library of guides',
-                    'Reward opportunities for consistency',
-                  ],
-                  footer: 'Everything you need in one place.',
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFFD700), Color(0xFFFF8C00)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Column(children: [
-                    Text('🔓', style: TextStyle(fontSize: 32)),
-                    SizedBox(height: 8),
-                    Text(
-                      'Start Improving Today',
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Your progress starts the moment you begin.\nUpgrade to Premium and start your journey. 🚀',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.black87,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ]),
-                ),
+        ),
+        const SizedBox(height: 12),
+        
+        // Subtitle
+        const Text(
+          'Get the knowledge, tools, and tracking system designed to help you improve consistently and see real progress. Premium is up to 15x cheaper than influencer courses.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+      ],
+    );
+  }
 
-                const SizedBox(height: 24),
-                
-                TextButton(
-                  onPressed: () async {
-                    try {
-                      await widget.billingService.restorePurchases();
-                      if (mounted) {
-                        Navigator.pop(context); 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Purchases restored successfully!'),
-                            backgroundColor: Color(0xFF8BC34A),
-                          ),
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Failed to restore purchases.'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  child: const Text(
-                    'Restore Purchases',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      decoration: TextDecoration.underline,
-                      fontSize: 14,
-                    ),
+  Widget _buildPricingCards() {
+    ProductDetails? monthly = _getProduct('premium_monthly');
+    ProductDetails? sixMonth = _getProduct('premium_6month');
+    ProductDetails? yearly = _getProduct('premium_yearly');
+    
+    // Fallback texts based on user prompt
+    String monthlyPrice = monthly != null ? monthly.price : '₹299.00';
+    String monthlySub = '/ month';
+    
+    String sixMonthPrice = sixMonth != null ? sixMonth.price : '₹1,499.00';
+    String sixMonthSub = sixMonth != null ? _getMonthlyBreakdownText(sixMonth, 6) : '(₹250/month)';
+    
+    String yearlyPrice = yearly != null ? yearly.price : '₹2,499.00';
+    String yearlySub = yearly != null ? _getMonthlyBreakdownText(yearly, 12) : '(₹208/month)';
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _pricingCardItem('1 Month', monthlyPrice, monthlySub, 'premium_monthly', false),
+          const SizedBox(width: 12),
+          _pricingCardItem('6 Months', sixMonthPrice, sixMonthSub, 'premium_6month', true),
+          const SizedBox(width: 12),
+          _pricingCardItem('12 Months', yearlyPrice, yearlySub, 'premium_yearly', false),
+        ],
+      ),
+    );
+  }
+  
+  String _getMonthlyBreakdownText(ProductDetails product, int months) {
+    double monthlyRaw = product.rawPrice / months;
+    return '(${product.currencySymbol}${monthlyRaw.toStringAsFixed(0)}/month)';
+  }
+
+  Widget _pricingCardItem(String title, String price, String sub, String id, bool isHighlighted) {
+    bool isSelected = _selectedPlanId == id;
+    Color gold = const Color(0xFFFFD700);
+    
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedPlanId = id;
+        });
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 130,
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+            decoration: BoxDecoration(
+              color: isSelected 
+                  ? gold.withValues(alpha: 0.15) 
+                  : Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isSelected ? gold : Colors.white12,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: isSelected ? gold : Colors.white70,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  price,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  sub,
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
           ),
-        ]),
+          if (isHighlighted)
+            Positioned(
+              top: -12,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: gold,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(color: gold.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2))
+                    ],
+                  ),
+                  child: const Text(
+                    'Most Popular',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _premiumBlock({
-    required String emoji,
-    required String title,
-    required String body,
-    List<String>? bullets,
-    String? footer,
-  }) {
+  Widget _buildFeatureMatrix() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.04),
-        borderRadius: BorderRadius.circular(14),
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
       ),
       child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Text(emoji, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 10),
-              Expanded(
+        children: [
+          // Header Row
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Text('Features', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
+                ),
+                Expanded(
+                  flex: 1,
+                  child: Center(child: Text('Free', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))),
+                ),
+                Expanded(
+                  flex: 1,
+                  child: Center(child: Text('Premium', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold))),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Colors.white10),
+          // Rows
+          _matrixRow('Ad-Free Experience', false, true),
+          _matrixRow('Daily Food Scans', '3', '10'),
+          _matrixRow('Basic Guides (Skincare & Health)', true, true),
+          _matrixRow('Daily Lock-In System (To-Do & Streaks)', true, true),
+          _matrixRow('Course-Level Guides (Facial, Grooming, Fitness, Mindset)', false, true),
+          _matrixRow('Track Real Progress (Weekly Face Scans & Charts)', false, true),
+          _matrixRow('150-Day Consistency Challenge Access', false, true, isLast: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _matrixRow(String feature, dynamic freeVal, dynamic premiumVal, {bool isLast = false}) {
+    return IntrinsicHeight(
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(feature, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: Center(
+              child: freeVal is bool
+                  ? Icon(freeVal ? Icons.check_circle_rounded : Icons.cancel_rounded, 
+                      color: freeVal ? Colors.white54 : Colors.white24, size: 20)
+                  : Text(freeVal.toString(), style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 15)),
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFD700).withValues(alpha: 0.1),
+                borderRadius: isLast ? const BorderRadius.only(bottomRight: Radius.circular(16)) : null,
+              ),
+              child: Center(
+                child: premiumVal is bool
+                    ? Icon(premiumVal ? Icons.check_circle_rounded : Icons.cancel_rounded, 
+                        color: premiumVal ? const Color(0xFFFFD700) : Colors.white24, size: 22)
+                    : Text(premiumVal.toString(), style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChallengeCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFFD700).withValues(alpha: 0.15),
+            Colors.transparent,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700).withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Text('🏆', style: TextStyle(fontSize: 24)),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
                 child: Text(
-                  title,
-                  style: const TextStyle(
+                  '150-Day Consistency Challenge',
+                  style: TextStyle(
                     color: Color(0xFFFFD700),
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-            ]),
-            if (body.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(body,
-                  style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                      height: 1.5)),
             ],
-            if (bullets != null) ...[
-              const SizedBox(height: 8),
-              ...bullets.map((b) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('✔ ',
-                              style: TextStyle(
-                                  color: Color(0xFFFFD700),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold)),
-                          Expanded(
-                              child: Text(b,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      height: 1.4))),
-                        ]),
-                  )),
-            ],
-            if (footer != null) ...[
-              const SizedBox(height: 8),
-              Text(footer,
-                  style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 13,
-                      fontStyle: FontStyle.italic)),
-            ],
-          ]),
-    );
-  }
-
-  Widget _pricingBlock() {
-    ProductDetails? monthly = _getProduct('premium_monthly');
-    ProductDetails? sixMonth = _getProduct('premium_6month');
-    ProductDetails? yearly = _getProduct('premium_yearly');
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFFFD700).withValues(alpha:0.12),
-            const Color(0xFFFF8C00).withValues(alpha:0.06),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: const Color(0xFFFFD700).withValues(alpha:0.4)),
-      ),
-      child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(children: [
-              Text('💰', style: TextStyle(fontSize: 20)),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Premium is upto 15× Cheaper Than Influencer Courses',
-                  style: TextStyle(
-                      color: Color(0xFFFFD700),
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 12),
-            const Text('Our Premium Plans:',
-                style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            _priceRow(
-              monthly != null ? '${monthly.price} / month' : 'Loading price...', 
-              '', 
-              false,
-              monthly != null ? () => widget.billingService.buySubscription(monthly) : null
-            ),
-            const SizedBox(height: 6),
-            _priceRow(
-              sixMonth != null ? '${sixMonth.price} / 6 months' : 'Loading price...', 
-              _getMonthlyBreakdown(sixMonth, 6), 
-              true,
-              sixMonth != null ? () => widget.billingService.buySubscription(sixMonth) : null
-            ),
-            const SizedBox(height: 6),
-            _priceRow(
-              yearly != null ? '${yearly.price} / 12 months' : 'Loading price...', 
-              _getMonthlyBreakdown(yearly, 12), 
-              false,
-              yearly != null ? () => widget.billingService.buySubscription(yearly) : null
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Tap a plan to securely subscribe via Google Play.',
-              style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 13,
-                  fontStyle: FontStyle.italic),
-            ),
-          ]),
-    );
-  }
-
-  Widget _priceRow(String price, String sub, bool isBest, VoidCallback? onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isBest
-              ? const Color(0xFFFFD700).withValues(alpha:0.15)
-              : Colors.white.withValues(alpha:0.04),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isBest
-                ? const Color(0xFFFFD700).withValues(alpha:0.7)
-                : Colors.white12,
-            width: isBest ? 1.5 : 1,
           ),
-        ),
-        child: Row(children: [
+          const SizedBox(height: 16),
+          const Text(
+            'Users with 6-Month or 12-Month Premium can join. Stay consistent to win:',
+            style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          _challengeBullet('Amazon vouchers worth up to \$300'),
+          _challengeBullet('Free products'),
+          _challengeBullet('Protein powder'),
+          _challengeBullet('Creatine supplements'),
+          _challengeBullet('Opportunity to work with our team'),
+          _challengeBullet('Chance to become the face of our app on social media'),
+        ],
+      ),
+    );
+  }
+
+  Widget _challengeBullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('🎁', style: TextStyle(fontSize: 16)),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              price,
-              style: TextStyle(
-                color: isBest ? const Color(0xFFFFD700) : Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-              ),
+              text,
+              style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
             ),
           ),
-          if (sub.isNotEmpty)
-            Text(sub,
-                style:
-                    const TextStyle(color: Colors.white54, fontSize: 12)),
-          if (isBest) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFD700),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                '⭐ Most Popular',
-                style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ]),
+        ],
       ),
     );
   }
 
-  Widget _rewardsBlock() {
+  Widget _buildTrustCard() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.04),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(children: [
-              Text('🏆', style: TextStyle(fontSize: 20)),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '150-Day Consistency Challenge',
-                  style: TextStyle(
-                      color: Color(0xFFFFD700),
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            const Text(
-              'Users with 6-Month or 12-Month Premium can join the 150-Day Challenge. Stay consistent and get a chance to win:',
-              style: TextStyle(
-                  color: Colors.white70, fontSize: 14, height: 1.5),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Why Users Choose Premium',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
             ),
-            const SizedBox(height: 10),
-            ...[
-              '🎁  Amazon vouchers worth upto \$300',
-              '🎁  Free products',
-              '🎁  Protein powder',
-              '🎁  Creatine supplements',
-              '🎁  Chance to become the face of our app on social media',
-              '🎁  Opportunity to work with our team',
-            ].map((r) => Padding(
-                  padding: const EdgeInsets.only(bottom: 5),
-                  child: Text(r,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          height: 1.4)),
-                )),
-            const SizedBox(height: 8),
-            const Text(
-              'Your consistency can earn real rewards.',
-              style: TextStyle(
-                  color: Color(0xFFFFD700),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  fontStyle: FontStyle.italic),
+          ),
+          const SizedBox(height: 16),
+          _trustBullet('Influencer-level knowledge'),
+          _trustBullet('Real weekly progress tracking'),
+          _trustBullet('Structured improvement system'),
+          _trustBullet('Growing library of guides'),
+          _trustBullet('Reward opportunities for consistency'),
+          const SizedBox(height: 16),
+          const Text(
+            'Instead of buying many expensive courses, everything is organized in one app.',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+              height: 1.4,
             ),
-          ]),
+          ),
+        ],
+      ),
     );
   }
-}
+
+  Widget _trustBullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.check_circle, color: Color(0xFFFFD700), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestorePurchases() {
+    return Center(
+      child: TextButton(
+        onPressed: () async {
+          try {
+            await widget.billingService.restorePurchases();
+            if (mounted) {
+              Navigator.pop(context); 
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Purchases restored successfully!'),
+                  backgroundColor: Color(0xFF8BC34A),
+                ),
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Failed to restore purchases.'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        },
+        child: const Text(
+          'Restore Purchases',
+          style: TextStyle(
+            color: Colors.white54,
+            decoration: TextDecoration.underline,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStickyBottomAction() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: _purchaseSelected,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFFFFD700),
+          foregroundColor: Colors.black,
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 0,
+        ),
+        child: const Text(
+          'Start Improving Today - Upgrade to Premium',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ),
+    );
+  }
+}
