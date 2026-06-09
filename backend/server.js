@@ -104,10 +104,10 @@ if (!fs.existsSync(uploadsDir)) {
 try {
   const staleFiles = fs.readdirSync(uploadsDir);
   for (const f of staleFiles) {
-    try { fs.unlinkSync(path.join(uploadsDir, f)); } catch (_) {}
+    try { fs.unlinkSync(path.join(uploadsDir, f)); } catch (_) { }
   }
   if (staleFiles.length > 0) console.log(`[Startup] Cleaned ${staleFiles.length} stale upload(s)`);
-} catch (_) {}
+} catch (_) { }
 
 const upload = multer({
   dest: uploadsDir,
@@ -167,7 +167,7 @@ app.post(
     activeRequests++;
     // Ensure counter is decremented when the response finishes (success or error)
     res.on('finish', () => { activeRequests--; });
-    res.on('close',  () => { activeRequests = Math.max(0, activeRequests - 1); });
+    res.on('close', () => { activeRequests = Math.max(0, activeRequests - 1); });
     next();
   },
   upload.fields([
@@ -329,7 +329,7 @@ Return EXACTLY this JSON. No extra text.
       }
 
       // Delete temp files NOW (before the Gemini API call) to free disk + page cache
-      filePaths.forEach(fp => { try { if (fs.existsSync(fp)) fs.unlinkSync(fp); } catch (_) {} });
+      filePaths.forEach(fp => { try { if (fs.existsSync(fp)) fs.unlinkSync(fp); } catch (_) { } });
       const filesAlreadyCleaned = true;
 
       let result;
@@ -348,16 +348,16 @@ Return EXACTLY this JSON. No extra text.
         } catch (geminiError) {
           attempt++;
           console.error(`Gemini API error (Attempt ${attempt}):`, geminiError.message || geminiError);
-          
+
           // If it's a 503 overload error, wait 3 seconds and try again
           if (geminiError.message && geminiError.message.includes('503')) {
             if (attempt < maxRetries) {
               console.log('Server overloaded. Waiting 3 seconds before retrying...');
               await new Promise(resolve => setTimeout(resolve, 3000));
-              continue; 
+              continue;
             }
           }
-          
+
           // Check for safety / content filter blocks
           if (geminiError.message && (
             geminiError.message.includes('SAFETY') ||
@@ -365,13 +365,13 @@ Return EXACTLY this JSON. No extra text.
             geminiError.message.includes('HARM') ||
             geminiError.message.includes('content filter')
           )) {
-            if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+            if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
             return res.status(400).json({ success: false, error: 'Could not analyze this image. Please use a clear, well-lit photo of your face.' });
           }
-          
+
           // If it fails all 3 times, tell the user
           if (attempt >= maxRetries) {
-            if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+            if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
             return res.status(500).json({ success: false, error: 'AI analysis failed due to high demand. Please try again later.' });
           }
         }
@@ -379,7 +379,7 @@ Return EXACTLY this JSON. No extra text.
 
       // Handle empty/blocked response
       if (!result) {
-        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
         return res.status(500).json({ success: false, error: 'AI returned an empty response. Please try with a different photo.' });
       }
 
@@ -392,12 +392,12 @@ Return EXACTLY this JSON. No extra text.
       } catch (textError) {
         console.error('Failed to extract text from Gemini response:', textError.message);
         // This often means the response was blocked by safety filters
-        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
         return res.status(400).json({ success: false, error: 'Could not analyze this image. The photo may not contain a clear face.' });
       }
 
       if (!rawText || rawText.trim().length === 0) {
-        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
         return res.status(500).json({ success: false, error: 'AI returned an empty response. Please try again.' });
       }
 
@@ -408,12 +408,12 @@ Return EXACTLY this JSON. No extra text.
         parsed = JSON.parse(jsonMatch[0]);
       } catch (err) {
         console.error('JSON parse failed. Raw text:', rawText.substring(0, 200));
-        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
         return res.status(500).json({ success: false, error: 'AI returned an invalid response. Please try again.' });
       }
 
       if (parsed.error) {
-        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+        if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
         return res.status(400).json({ success: false, error: parsed.error });
       }
 
@@ -465,13 +465,13 @@ Return EXACTLY this JSON. No extra text.
       }
       await userRef.set({ uploads: uploads }, { merge: true });
 
-      if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+      if (!filesAlreadyCleaned) filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
 
       return res.json({ success: true, scores });
 
     } catch (error) {
       console.error('Analyze endpoint error:', error);
-      filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+      filePaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
       // Sanitize error message — don't expose internals to the client
       const safeMessage = 'An unexpected error occurred. Please try again.';
       return res.status(500).json({ success: false, error: safeMessage });
@@ -491,7 +491,7 @@ app.post(
     }
     activeRequests++;
     res.on('finish', () => { activeRequests--; });
-    res.on('close',  () => { activeRequests = Math.max(0, activeRequests - 1); });
+    res.on('close', () => { activeRequests = Math.max(0, activeRequests - 1); });
     // Handle multer errors explicitly
     upload.single('frontImage')(req, res, (multerErr) => {
       if (multerErr) {
@@ -536,37 +536,30 @@ app.post(
         inlineData: { mimeType: 'image/jpeg', data: base64Data }
       };
 
-      const promptText = `You are a precise food recognition and portion estimation AI. Analyse this food photo carefully.
+      const promptText = `You are a world-class nutrition AI. Analyze this food image with forensic precision.
 
-The photo is taken from TOP DOWN showing the full portion on a plate or surface.
-
-Return ONLY valid JSON with no preamble, no markdown, no explanation. Just raw JSON.
-
-Identify ALL foods visible. For mixed dishes estimate total as one item.
+CRITICAL INSTRUCTIONS:
+1. EXACT PORTIONS: Do NOT default to 100g. Look at plate sizes, hands, or utensils to establish 3D volume. 1 standard roti = 40g. 1 cup cooked rice = 150g. 1 standard chicken breast = 170g. Dense foods (meat, wet rice) weigh more than light foods (bread, leaves). Give exact weights (e.g., 145g, 85g).
+2. CALORIES & MACROS: Calculate the precise total calories, protein, carbs, fats, and fiber based on your calculated gram weight.
+3. NAMING: Use simple English and Indian terms (e.g., "white rice cooked", "roti wheat chapati", "chicken breast grilled", "dal moong cooked").
+4. COST SAVING (STRICT OUTPUT): Return ONLY a raw JSON object. NO markdown formatting like \`\`\`json. NO explanations. Start immediately with {.
 
 {
   "foods": [
     {
-      "name": "white rice cooked",
-      "estimated_grams": 180,
+      "name": "roti wheat chapati",
+      "estimated_grams": 80,
+      "calories": 237,
+      "protein": 7.2,
+      "carbs": 48.0,
+      "fats": 2.4,
+      "fiber": 2.8,
       "confidence": "high"
-    },
-    {
-      "name": "dal toor cooked",
-      "estimated_grams": 120,
-      "confidence": "medium"
     }
   ],
-  "meal_description": "A plate of rice and dal",
+  "meal_description": "2 rotis",
   "image_quality": "good"
 }
-
-Naming rules — use simple lowercase English names matching common food database names:
-- Use "cooked" suffix for cooked items (e.g. "white rice cooked", "chicken breast grilled")
-- Use Indian names where appropriate (e.g. "roti wheat", "dal moong", "paneer", "ghee")
-- List each distinct food separately
-- For a full thali, list each component separately
-- Estimate grams based on visual size — a standard roti = 40g, one cup rice = 180g, one egg = 55g
 
 If image does not contain food: {"foods": [], "meal_description": "No food detected", "image_quality": "no_food"}
 If image is too blurry: {"foods": [], "meal_description": "Image too blurry", "image_quality": "poor"}`;
@@ -646,7 +639,7 @@ If image is too blurry: {"foods": [], "meal_description": "Image too blurry", "i
     } catch (error) {
       console.error('Food-analyze endpoint error:', error);
       if (filePath && fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch (_) {}
+        try { fs.unlinkSync(filePath); } catch (_) { }
       }
       // Include actual error message for debugging
       const debugMsg = error && error.message ? error.message : String(error);
@@ -702,8 +695,8 @@ process.on('uncaughtException', (err) => {
   // Clean up uploads dir on crash
   try {
     const files = fs.readdirSync(uploadsDir);
-    files.forEach(f => { try { fs.unlinkSync(path.join(uploadsDir, f)); } catch (_) {} });
-  } catch (_) {}
+    files.forEach(f => { try { fs.unlinkSync(path.join(uploadsDir, f)); } catch (_) { } });
+  } catch (_) { }
 });
 
 const PORT = process.env.PORT || 3000;

@@ -1803,16 +1803,7 @@ class _DayScreenState extends State<_DayScreen> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 Route<T> _slideRoute<T>(Widget page) {
-  return PageRouteBuilder<T>(
-    pageBuilder: (_, _, _) => page,
-    transitionDuration: const Duration(milliseconds: 320),
-    reverseTransitionDuration: const Duration(milliseconds: 280),
-    transitionsBuilder: (_, animation, _, child) {
-      final tween = Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
-          .chain(CurveTween(curve: Curves.easeOutCubic));
-      return SlideTransition(position: animation.drive(tween), child: child);
-    },
-  );
+  return MaterialPageRoute<T>(builder: (_) => page);
 }
 
 class _EditTasksScreen extends StatefulWidget {

@@ -426,7 +426,15 @@ class MyApp extends StatelessWidget {
    return MaterialApp(
       title: 'Level Max',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF0A0A0A),
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
+      ),
       navigatorKey: navigatorKey,
       navigatorObservers: [analyticsObserver],
       onGenerateRoute: (settings) {
