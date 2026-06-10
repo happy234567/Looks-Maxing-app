@@ -10,6 +10,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import 'profile_screen.dart';
 import 'food_scan_service.dart';
@@ -18,6 +19,7 @@ import 'billing_service.dart';
 import 'ad_service.dart';
 import 'scan_tutorial_screen.dart';
 import 'food_detail_screen.dart';
+import 'notification_plugin.dart';
 
 class DietPlan {
   final int calories, protein, carbs, fats, fiber;
@@ -212,7 +214,6 @@ Widget _stepBar(double v) => TweenAnimationBuilder<double>(
   ),
 );
 
-
 AppBar _stepAppBar(BuildContext ctx, String title) => AppBar(
   backgroundColor: Colors.transparent,
   elevation: 0,
@@ -225,6 +226,8 @@ AppBar _stepAppBar(BuildContext ctx, String title) => AppBar(
     style: const TextStyle(color: _gold, fontWeight: FontWeight.bold),
   ),
 );
+
+final ValueNotifier<int> foodLogUpdateNotifier = ValueNotifier<int>(0);
 
 // ══════════════════════════════════════════════════════════════
 // SCREEN A - Food Log Home
@@ -257,11 +260,13 @@ class _FoodLogPageState extends State<FoodLogPage>
     )..repeat(reverse: true);
     NutritionDB.initialize();
     _refreshAll();
+    foodLogUpdateNotifier.addListener(_refreshAll);
   }
 
   @override
   void dispose() {
     _pulseCtrl.dispose();
+    foodLogUpdateNotifier.removeListener(_refreshAll);
     super.dispose();
   }
 
@@ -283,8 +288,83 @@ class _FoodLogPageState extends State<FoodLogPage>
         setState(() => _hasPlan = false);
       }
     }
+    await _syncFoodLogsFromFirestore();
     await _loadFoods();
     await _loadLast7DaysStats();
+  }
+
+  Future<void> _syncFoodLogsFromFirestore() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final uid = user.uid;
+    final p = await SharedPreferences.getInstance();
+
+    try {
+      final fifteenDaysAgo = DateTime.now().subtract(const Duration(days: 15));
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('food_logs')
+          .where(
+            'createdAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(fifteenDaysAgo),
+          )
+          .get();
+
+      if (snapshot.docs.isEmpty) return;
+
+      final Map<String, List<Map<String, dynamic>>> firestoreEntriesByDate = {};
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final logDate = data['logDate'] as String?;
+        if (logDate == null) continue;
+
+        final entry = {
+          'mealType': data['mealType'],
+          'foods': data['foods'],
+          'totalCalories': data['totalCalories'],
+          'totalProtein': data['totalProtein'],
+          'totalCarbs': data['totalCarbs'],
+          'totalFats': data['totalFats'],
+          'totalFiber': data['totalFiber'],
+          'imagePath': data['imagePath'],
+          'timestamp': data['timestamp'],
+        };
+
+        firestoreEntriesByDate.putIfAbsent(logDate, () => []).add(entry);
+      }
+
+      for (final dateStr in firestoreEntriesByDate.keys) {
+        final localKey = 'food_log_${uid}_$dateStr';
+        final localJson = p.getString(localKey);
+        final List<Map<String, dynamic>> localList =
+            localJson != null && localJson.isNotEmpty
+            ? (jsonDecode(localJson) as List).cast<Map<String, dynamic>>()
+            : [];
+
+        final newEntries = firestoreEntriesByDate[dateStr]!;
+        bool modified = false;
+
+        for (final entry in newEntries) {
+          final exists = localList.any(
+            (e) => e['timestamp'] == entry['timestamp'],
+          );
+          if (!exists) {
+            localList.add(entry);
+            modified = true;
+          }
+        }
+
+        if (modified) {
+          localList.sort(
+            (a, b) => (a['timestamp'] as num).compareTo(b['timestamp'] as num),
+          );
+          await p.setString(localKey, jsonEncode(localList));
+        }
+      }
+    } catch (e) {
+      debugPrint('[FoodSync] Error syncing logs: $e');
+    }
   }
 
   void _setLocal(SharedPreferences p) {
@@ -395,18 +475,6 @@ class _FoodLogPageState extends State<FoodLogPage>
       return;
     }
 
-    // ── Show interstitial ad for free users before opening camera ──
-    if (!isPremium) {
-      final completer = Completer<void>();
-      AdService().showFoodScanAd(
-        onComplete: () {
-          if (!completer.isCompleted) completer.complete();
-        },
-      );
-      await completer.future;
-      if (!mounted) return;
-    }
-
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.camera,
@@ -466,7 +534,7 @@ class _FoodLogPageState extends State<FoodLogPage>
       await Navigator.push(
         context,
         _slideRoute(
-          FoodScanLoadingScreen(
+          FoodScanPreviewScreen(
             imagePath: finalPath,
             mealType: mealType,
             selectedDate: _selectedDate,
@@ -654,7 +722,7 @@ class _FoodLogPageState extends State<FoodLogPage>
     final entries = _logEntries
         .where((e) => e['mealType'] == mealType)
         .toList();
-    
+
     int mealKcal = 0;
     double mealPro = 0;
     double mealCarb = 0;
@@ -712,10 +780,7 @@ class _FoodLogPageState extends State<FoodLogPage>
                       const SizedBox(height: 2),
                       const Text(
                         'No food logged yet',
-                        style: TextStyle(
-                          color: Colors.white30,
-                          fontSize: 12,
-                        ),
+                        style: TextStyle(color: Colors.white30, fontSize: 12),
                       ),
                     ],
                   ),
@@ -745,7 +810,7 @@ class _FoodLogPageState extends State<FoodLogPage>
               color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 10,
               offset: const Offset(0, 4),
-            )
+            ),
           ],
         ),
         child: Column(
@@ -849,26 +914,53 @@ class _FoodLogPageState extends State<FoodLogPage>
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.02),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.02)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.02),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          if (localImagePath != null && localImagePath.isNotEmpty) ...[
+                          if (localImagePath != null &&
+                              localImagePath.isNotEmpty) ...[
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.file(
-                                File(localImagePath),
-                                height: 50,
-                                width: 50,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Container(
+                              child: localImagePath.startsWith('http')
+                                  ? Image.network(
+                                      localImagePath,
                                       height: 50,
                                       width: 50,
-                                      color: Colors.white10,
-                                      child: const Icon(Icons.restaurant, color: Colors.white38, size: 20),
+                                      fit: BoxFit.cover,
+                                      errorBuilder:
+                                          (context, error, stackTrace) =>
+                                              Container(
+                                                height: 50,
+                                                width: 50,
+                                                color: Colors.white10,
+                                                child: const Icon(
+                                                  Icons.restaurant,
+                                                  color: Colors.white38,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                    )
+                                  : Image.file(
+                                      File(localImagePath),
+                                      height: 50,
+                                      width: 50,
+                                      fit: BoxFit.cover,
+                                      errorBuilder:
+                                          (context, error, stackTrace) =>
+                                              Container(
+                                                height: 50,
+                                                width: 50,
+                                                color: Colors.white10,
+                                                child: const Icon(
+                                                  Icons.restaurant,
+                                                  color: Colors.white38,
+                                                  size: 20,
+                                                ),
+                                              ),
                                     ),
-                              ),
                             ),
                             const SizedBox(width: 12),
                           ],
@@ -878,12 +970,16 @@ class _FoodLogPageState extends State<FoodLogPage>
                               children: foods.map((f) {
                                 final name = f['name'] as String? ?? 'Food';
                                 final cal = f['cal'] as num? ?? 0;
-                                final grams = (f['grams'] as num?)?.round() ?? 100;
+                                final grams =
+                                    (f['grams'] as num?)?.round() ?? 100;
                                 final isEst = f['isEstimate'] == true;
                                 return Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 2,
+                                  ),
                                   child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
                                       Expanded(
                                         child: Text(
@@ -912,6 +1008,18 @@ class _FoodLogPageState extends State<FoodLogPage>
                             ),
                           ),
                           const SizedBox(width: 8),
+                          if (entry['syncStatus'] == 'failed') ...[
+                            const Tooltip(
+                              message:
+                                  'Sync failed. Will retry or tap to resolve.',
+                              child: Icon(
+                                Icons.sync_problem_rounded,
+                                color: Colors.redAccent,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
                           const Icon(
                             Icons.chevron_right_rounded,
                             color: Colors.white24,
@@ -932,10 +1040,17 @@ class _FoodLogPageState extends State<FoodLogPage>
                 icon: const Icon(Icons.add_rounded, size: 16, color: _gold),
                 label: const Text(
                   'Add Item',
-                  style: TextStyle(color: _gold, fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: _gold,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -949,14 +1064,22 @@ class _FoodLogPageState extends State<FoodLogPage>
 
   String _getDayNameShort(int weekday) {
     switch (weekday) {
-      case DateTime.monday: return 'Mon';
-      case DateTime.tuesday: return 'Tue';
-      case DateTime.wednesday: return 'Wed';
-      case DateTime.thursday: return 'Thu';
-      case DateTime.friday: return 'Fri';
-      case DateTime.saturday: return 'Sat';
-      case DateTime.sunday: return 'Sun';
-      default: return '';
+      case DateTime.monday:
+        return 'Mon';
+      case DateTime.tuesday:
+        return 'Tue';
+      case DateTime.wednesday:
+        return 'Wed';
+      case DateTime.thursday:
+        return 'Thu';
+      case DateTime.friday:
+        return 'Fri';
+      case DateTime.saturday:
+        return 'Sat';
+      case DateTime.sunday:
+        return 'Sun';
+      default:
+        return '';
     }
   }
 
@@ -972,7 +1095,7 @@ class _FoodLogPageState extends State<FoodLogPage>
       final dateStr = date.toIso8601String().substring(0, 10);
       final key = 'food_log_${_uid}_$dateStr';
       final j = p.getString(key);
-      
+
       int dayCal = 0;
       double dayPro = 0, dayCarb = 0, dayFat = 0, dayFib = 0;
       bool hasLogs = false;
@@ -1036,10 +1159,12 @@ class _FoodLogPageState extends State<FoodLogPage>
         itemBuilder: (context, index) {
           final date = now.subtract(Duration(days: 6 - index));
           final dateStr = date.toIso8601String().substring(0, 10);
-          final isSelected = date.year == _selectedDate.year &&
+          final isSelected =
+              date.year == _selectedDate.year &&
               date.month == _selectedDate.month &&
               date.day == _selectedDate.day;
-          final isToday = date.year == now.year &&
+          final isToday =
+              date.year == now.year &&
               date.month == now.month &&
               date.day == now.day;
 
@@ -1075,7 +1200,7 @@ class _FoodLogPageState extends State<FoodLogPage>
                           color: _gold.withValues(alpha: 0.1),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
-                        )
+                        ),
                       ]
                     : null,
               ),
@@ -1105,7 +1230,9 @@ class _FoodLogPageState extends State<FoodLogPage>
                       width: 5,
                       height: 5,
                       decoration: BoxDecoration(
-                        color: goalMet ? const Color(0xFF4ADE80) : const Color(0xFF5B9BF5),
+                        color: goalMet
+                            ? const Color(0xFF4ADE80)
+                            : const Color(0xFF5B9BF5),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -1128,13 +1255,15 @@ class _FoodLogPageState extends State<FoodLogPage>
     for (int i = 6; i >= 0; i--) {
       final date = now.subtract(Duration(days: i));
       final dateStr = date.toIso8601String().substring(0, 10);
-      final dayData = _last7DaysData[dateStr] ?? {
-        'dayName': _getDayNameShort(date.weekday),
-        'dayNum': date.day.toString(),
-        'hasLogs': false,
-        'goalMet': false,
-        'calories': 0,
-      };
+      final dayData =
+          _last7DaysData[dateStr] ??
+          {
+            'dayName': _getDayNameShort(date.weekday),
+            'dayNum': date.day.toString(),
+            'hasLogs': false,
+            'goalMet': false,
+            'calories': 0,
+          };
 
       final bool hasLogs = dayData['hasLogs'] as bool? ?? false;
       final bool goalMet = dayData['goalMet'] as bool? ?? false;
@@ -1185,9 +1314,15 @@ class _FoodLogPageState extends State<FoodLogPage>
                         gradient: LinearGradient(
                           begin: Alignment.bottomCenter,
                           end: Alignment.topCenter,
-                          colors: goalMet 
-                              ? [const Color(0xFF2E7D32), const Color(0xFF4ADE80)]
-                              : [const Color(0xFF1565C0), const Color(0xFF5B9BF5)],
+                          colors: goalMet
+                              ? [
+                                  const Color(0xFF2E7D32),
+                                  const Color(0xFF4ADE80),
+                                ]
+                              : [
+                                  const Color(0xFF1565C0),
+                                  const Color(0xFF5B9BF5),
+                                ],
                         ),
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
@@ -1203,10 +1338,14 @@ class _FoodLogPageState extends State<FoodLogPage>
                 const SizedBox(height: 8),
                 Icon(
                   hasLogs
-                      ? (goalMet ? Icons.check_circle_rounded : Icons.radio_button_checked_rounded)
+                      ? (goalMet
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_checked_rounded)
                       : Icons.radio_button_off_rounded,
                   color: hasLogs
-                      ? (goalMet ? const Color(0xFF4ADE80) : const Color(0xFF5B9BF5))
+                      ? (goalMet
+                            ? const Color(0xFF4ADE80)
+                            : const Color(0xFF5B9BF5))
                       : Colors.white24,
                   size: 14,
                 ),
@@ -1214,7 +1353,9 @@ class _FoodLogPageState extends State<FoodLogPage>
                 Text(
                   dayData['dayNum'].toString(),
                   style: TextStyle(
-                    color: date.day == _selectedDate.day && date.month == _selectedDate.month
+                    color:
+                        date.day == _selectedDate.day &&
+                            date.month == _selectedDate.month
                         ? _gold
                         : Colors.white70,
                     fontSize: 12,
@@ -1233,9 +1374,7 @@ class _FoodLogPageState extends State<FoodLogPage>
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(24.0),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.06),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1257,16 +1396,16 @@ class _FoodLogPageState extends State<FoodLogPage>
                   ),
                   Text(
                     "Tap any day to view its logs",
-                    style: TextStyle(
-                      color: Colors.white38,
-                      fontSize: 11,
-                    ),
+                    style: TextStyle(color: Colors.white38, fontSize: 11),
                   ),
                 ],
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _gold.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -1286,16 +1425,22 @@ class _FoodLogPageState extends State<FoodLogPage>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _streakItem("Food Logged", "$_streakDays / 7 days", Colors.blueAccent),
-              _streakItem("Goal Hit", "$_goalsMetCount / 7 days", const Color(0xFF4ADE80)),
+              _streakItem(
+                "Food Logged",
+                "$_streakDays / 7 days",
+                Colors.blueAccent,
+              ),
+              _streakItem(
+                "Goal Hit",
+                "$_goalsMetCount / 7 days",
+                const Color(0xFF4ADE80),
+              ),
             ],
           ),
           const SizedBox(height: 20),
           const Divider(color: Colors.white10, height: 1),
           const SizedBox(height: 20),
-          Row(
-            children: dayColumns,
-          ),
+          Row(children: dayColumns),
         ],
       ),
     );
@@ -1340,7 +1485,8 @@ class _FoodLogPageState extends State<FoodLogPage>
     double carbPct = totalMacros > 0 ? _tCarb / totalMacros : 0.0;
     double fatPct = totalMacros > 0 ? _tFat / totalMacros : 0.0;
 
-    final String activeDateLabel = _selectedDate.toIso8601String().substring(0, 10) ==
+    final String activeDateLabel =
+        _selectedDate.toIso8601String().substring(0, 10) ==
             DateTime.now().toIso8601String().substring(0, 10)
         ? "Today"
         : "${_selectedDate.day}/${_selectedDate.month}";
@@ -1350,10 +1496,7 @@ class _FoodLogPageState extends State<FoodLogPage>
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF0F0F12),
-            Color(0xFF14141A),
-          ],
+          colors: [Color(0xFF0F0F12), Color(0xFF14141A)],
         ),
       ),
       child: SafeArea(
@@ -1394,7 +1537,11 @@ class _FoodLogPageState extends State<FoodLogPage>
                   icon: const CircleAvatar(
                     radius: 16,
                     backgroundColor: _card,
-                    child: Icon(Icons.autorenew_rounded, color: _gold, size: 18),
+                    child: Icon(
+                      Icons.autorenew_rounded,
+                      color: _gold,
+                      size: 18,
+                    ),
                   ),
                   tooltip: 'Regenerate Plan',
                   onPressed: () async {
@@ -1421,7 +1568,7 @@ class _FoodLogPageState extends State<FoodLogPage>
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   const SizedBox(height: 8),
-                  
+
                   // ── Calorie Intake Card ──
                   Container(
                     padding: const EdgeInsets.all(22),
@@ -1449,9 +1596,15 @@ class _FoodLogPageState extends State<FoodLogPage>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  isOver ? "SURPLUS CALORIES" : "CALORIES REMAINING",
+                                  isOver
+                                      ? "SURPLUS CALORIES"
+                                      : "CALORIES REMAINING",
                                   style: TextStyle(
-                                    color: isOver ? Colors.redAccent.withValues(alpha: 0.8) : Colors.white38,
+                                    color: isOver
+                                        ? Colors.redAccent.withValues(
+                                            alpha: 0.8,
+                                          )
+                                        : Colors.white38,
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 1.0,
@@ -1459,17 +1612,25 @@ class _FoodLogPageState extends State<FoodLogPage>
                                 ),
                                 const SizedBox(height: 8),
                                 Row(
-                                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.baseline,
                                   textBaseline: TextBaseline.alphabetic,
                                   children: [
                                     TweenAnimationBuilder<int>(
-                                      tween: IntTween(begin: 0, end: displayRemaining),
-                                      duration: const Duration(milliseconds: 600),
+                                      tween: IntTween(
+                                        begin: 0,
+                                        end: displayRemaining,
+                                      ),
+                                      duration: const Duration(
+                                        milliseconds: 600,
+                                      ),
                                       curve: Curves.easeOutCubic,
                                       builder: (context, val, _) => Text(
                                         '$val',
                                         style: TextStyle(
-                                          color: isOver ? Colors.redAccent : Colors.white,
+                                          color: isOver
+                                              ? Colors.redAccent
+                                              : Colors.white,
                                           fontWeight: FontWeight.w800,
                                           fontSize: 42,
                                           height: 1.0,
@@ -1480,7 +1641,11 @@ class _FoodLogPageState extends State<FoodLogPage>
                                     Text(
                                       'kcal',
                                       style: TextStyle(
-                                        color: isOver ? Colors.redAccent.withValues(alpha: 0.6) : Colors.white38,
+                                        color: isOver
+                                            ? Colors.redAccent.withValues(
+                                                alpha: 0.6,
+                                              )
+                                            : Colors.white38,
                                         fontSize: 16,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -1490,18 +1655,33 @@ class _FoodLogPageState extends State<FoodLogPage>
                                 const SizedBox(height: 12),
                                 Row(
                                   children: [
-                                    const Icon(Icons.flag_rounded, color: Colors.white38, size: 14),
+                                    const Icon(
+                                      Icons.flag_rounded,
+                                      color: Colors.white38,
+                                      size: 14,
+                                    ),
                                     const SizedBox(width: 4),
                                     Text(
                                       'Goal: $_cal',
-                                      style: const TextStyle(color: Colors.white38, fontSize: 12),
+                                      style: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                     const SizedBox(width: 12),
-                                    const Icon(Icons.restaurant, color: _gold, size: 14),
+                                    const Icon(
+                                      Icons.restaurant,
+                                      color: _gold,
+                                      size: 14,
+                                    ),
                                     const SizedBox(width: 4),
                                     Text(
                                       'Food: $_tCal',
-                                      style: const TextStyle(color: _gold, fontSize: 12, fontWeight: FontWeight.bold),
+                                      style: const TextStyle(
+                                        color: _gold,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -1516,7 +1696,9 @@ class _FoodLogPageState extends State<FoodLogPage>
                                   CircularProgressIndicator(
                                     value: calPct,
                                     strokeWidth: 8,
-                                    backgroundColor: Colors.white.withValues(alpha: 0.05),
+                                    backgroundColor: Colors.white.withValues(
+                                      alpha: 0.05,
+                                    ),
                                     valueColor: AlwaysStoppedAnimation<Color>(
                                       isOver ? Colors.redAccent : _gold,
                                     ),
@@ -1539,7 +1721,7 @@ class _FoodLogPageState extends State<FoodLogPage>
                         const SizedBox(height: 20),
                         const Divider(color: Colors.white10, height: 1),
                         const SizedBox(height: 16),
-                        
+
                         // Sleek stacked macro bar
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
@@ -1550,20 +1732,28 @@ class _FoodLogPageState extends State<FoodLogPage>
                                 if (proPct > 0)
                                   Expanded(
                                     flex: (proPct * 100).round().clamp(1, 100),
-                                    child: Container(color: const Color(0xFF5B9BF5)),
+                                    child: Container(
+                                      color: const Color(0xFF5B9BF5),
+                                    ),
                                   ),
                                 if (carbPct > 0)
                                   Expanded(
                                     flex: (carbPct * 100).round().clamp(1, 100),
-                                    child: Container(color: const Color(0xFFF5A623)),
+                                    child: Container(
+                                      color: const Color(0xFFF5A623),
+                                    ),
                                   ),
                                 if (fatPct > 0)
                                   Expanded(
                                     flex: (fatPct * 100).round().clamp(1, 100),
-                                    child: Container(color: const Color(0xFF50E3C2)),
+                                    child: Container(
+                                      color: const Color(0xFF50E3C2),
+                                    ),
                                   ),
                                 if (proPct == 0 && carbPct == 0 && fatPct == 0)
-                                  Expanded(child: Container(color: Colors.white12)),
+                                  Expanded(
+                                    child: Container(color: Colors.white12),
+                                  ),
                               ],
                             ),
                           ),
@@ -1572,10 +1762,26 @@ class _FoodLogPageState extends State<FoodLogPage>
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            _simpleMacro('Protein', _tPro, const Color(0xFF5B9BF5)),
-                            _simpleMacro('Carbs', _tCarb, const Color(0xFFF5A623)),
-                            _simpleMacro('Fats', _tFat, const Color(0xFF50E3C2)),
-                            _simpleMacro('Fiber', _tFib, const Color(0xFF7ED321)),
+                            _simpleMacro(
+                              'Protein',
+                              _tPro,
+                              const Color(0xFF5B9BF5),
+                            ),
+                            _simpleMacro(
+                              'Carbs',
+                              _tCarb,
+                              const Color(0xFFF5A623),
+                            ),
+                            _simpleMacro(
+                              'Fats',
+                              _tFat,
+                              const Color(0xFF50E3C2),
+                            ),
+                            _simpleMacro(
+                              'Fiber',
+                              _tFib,
+                              const Color(0xFF7ED321),
+                            ),
                           ],
                         ),
                       ],
@@ -1653,13 +1859,21 @@ class _FoodLogPageState extends State<FoodLogPage>
                               ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.calendar_month_rounded, color: _gold, size: 20),
+                              icon: const Icon(
+                                Icons.calendar_month_rounded,
+                                color: _gold,
+                                size: 20,
+                              ),
                               onPressed: () async {
                                 final picked = await showDatePicker(
                                   context: context,
                                   initialDate: _selectedDate,
-                                  firstDate: DateTime.now().subtract(const Duration(days: 90)),
-                                  lastDate: DateTime.now().add(const Duration(days: 30)),
+                                  firstDate: DateTime.now().subtract(
+                                    const Duration(days: 90),
+                                  ),
+                                  lastDate: DateTime.now().add(
+                                    const Duration(days: 30),
+                                  ),
                                   builder: (context, child) {
                                     return Theme(
                                       data: Theme.of(context).copyWith(
@@ -1816,7 +2030,7 @@ class _FoodLogPageState extends State<FoodLogPage>
 
                   // ── Last 7 Days Progress Card ──
                   _buildLast7DaysProgressCard(),
-                  
+
                   const SizedBox(height: 100),
                 ]),
               ),
@@ -1938,6 +2152,204 @@ class MealTypePickerSheet extends StatelessWidget {
   }
 }
 
+class FoodScanPreviewScreen extends StatefulWidget {
+  final String imagePath;
+  final String mealType;
+  final DateTime selectedDate;
+
+  const FoodScanPreviewScreen({
+    super.key,
+    required this.imagePath,
+    required this.mealType,
+    required this.selectedDate,
+  });
+
+  @override
+  State<FoodScanPreviewScreen> createState() => _FoodScanPreviewScreenState();
+}
+
+class _FoodScanPreviewScreenState extends State<FoodScanPreviewScreen> {
+  final TextEditingController _descController = TextEditingController();
+
+  @override
+  void dispose() {
+    _descController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFFFFD700)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          "Scan Preview",
+          style: TextStyle(
+            color: Color(0xFFFFD700),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Food Image Card
+              Center(
+                child: Container(
+                  width: double.infinity,
+                  height: MediaQuery.of(context).size.height * 0.35,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 15,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: Image.file(
+                      File(widget.imagePath),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+
+              // Description input section
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161616),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.05),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Add Description (Optional)",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      "Specify food details or quantities to help AI analyze more accurately.",
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.4),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _descController,
+                      maxLines: 3,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText:
+                            "e.g., Cooked rice 100g and Air fried chicken breast 150g use 2Tabel spoon Oil/Butter used to cook Food",
+                        hintStyle: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.25),
+                        ),
+                        filled: true,
+                        fillColor: const Color.fromARGB(255, 15, 9, 9),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            width: 1,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            width: 1,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFFFD700),
+                            width: 1,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Action button
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FoodScanLoadingScreen(
+                          imagePath: widget.imagePath,
+                          mealType: widget.mealType,
+                          selectedDate: widget.selectedDate,
+                          description: _descController.text.trim(),
+                        ),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD700),
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    "Start AI Analysis",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ══════════════════════════════════════════════════════════════
 // FoodScanLoadingScreen
 // ══════════════════════════════════════════════════════════════
@@ -1945,11 +2357,14 @@ class FoodScanLoadingScreen extends StatefulWidget {
   final String imagePath;
   final String mealType;
   final DateTime selectedDate;
+  final String description;
+
   const FoodScanLoadingScreen({
     super.key,
     required this.imagePath,
     required this.mealType,
     required this.selectedDate,
+    this.description = '',
   });
 
   @override
@@ -1994,6 +2409,9 @@ class _FoodScanLoadingScreenState extends State<FoodScanLoadingScreen> {
     final request = http.MultipartRequest('POST', uri);
     request.headers['Authorization'] = 'Bearer $token';
     request.fields['mealType'] = widget.mealType;
+    if (widget.description.isNotEmpty) {
+      request.fields['description'] = widget.description;
+    }
 
     request.files.add(
       await http.MultipartFile.fromPath(
@@ -2009,6 +2427,154 @@ class _FoodScanLoadingScreenState extends State<FoodScanLoadingScreen> {
     return await http.Response.fromStream(streamedResponse);
   }
 
+  Future<List<FoodNutritionResult>> _runAnalysis(String token) async {
+    http.Response? response;
+    String? lastError;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await _sendFoodRequest(token);
+        if (response.statusCode == 503 && attempt < 1) {
+          await Future.delayed(const Duration(seconds: 4));
+          continue;
+        }
+        break;
+      } on TimeoutException {
+        lastError = 'timeout';
+        if (attempt < 1) {
+          await Future.delayed(const Duration(seconds: 2));
+          continue;
+        }
+      } on SocketException {
+        lastError = 'network';
+        if (attempt < 1) {
+          await Future.delayed(const Duration(seconds: 2));
+          continue;
+        }
+      } catch (e) {
+        lastError = e.toString();
+        if (attempt < 1) {
+          await Future.delayed(const Duration(seconds: 2));
+          continue;
+        }
+      }
+    }
+
+    if (response == null) {
+      if (lastError == 'timeout') {
+        throw Exception(
+          'Server is starting up. Please wait a moment and try again.',
+        );
+      } else if (lastError == 'network') {
+        throw Exception('No internet connection. Please check your network.');
+      } else {
+        throw Exception('Could not reach server. Please try again.');
+      }
+    }
+
+    if (response.statusCode == 401) {
+      throw Exception('Session expired. Please restart the app and try again.');
+    }
+    if (response.statusCode == 429) {
+      throw Exception('Too many requests. Please wait a few minutes.');
+    }
+    if (response.statusCode == 503) {
+      throw Exception(
+        'Server is waking up. Please wait 30 seconds and try again.',
+      );
+    }
+    if (response.statusCode != 200) {
+      try {
+        final errData = jsonDecode(response.body);
+        throw Exception(
+          errData['error'] as String? ??
+              'Server error (${response.statusCode})',
+        );
+      } catch (_) {
+        throw Exception(
+          'Server error (${response.statusCode}). Please try again.',
+        );
+      }
+    }
+
+    final data = jsonDecode(response.body);
+    if (data['success'] != true) {
+      throw Exception(data['error'] as String? ?? 'Analysis was unsuccessful.');
+    }
+
+    final List<FoodNutritionResult> results = [];
+    final foodsList = data['foods'] as List? ?? [];
+    if (foodsList.isEmpty) {
+      throw Exception(
+        'No food detected in the photo. Try pointing the camera directly at your food.',
+      );
+    }
+
+    for (final f in foodsList) {
+      final name = f['name'] as String? ?? '';
+      final grams = (f['estimated_grams'] as num?)?.toDouble() ?? 100.0;
+      final confStr = f['confidence'] as String? ?? 'medium';
+      double defaultConf = 0.8;
+      if (confStr == 'high') defaultConf = 1.0;
+      if (confStr == 'low') defaultConf = 0.5;
+
+      final cal = f['calories'] as num?;
+      final pro = f['protein'] as num?;
+      final carb = f['carbs'] as num?;
+      final fat = f['fats'] as num?;
+      final fib = f['fiber'] as num?;
+
+      if (cal != null || pro != null || carb != null || fat != null) {
+        results.add(
+          FoodNutritionResult(
+            foodName: name,
+            grams: grams,
+            calories: cal?.toInt() ?? 0,
+            protein: pro?.toDouble() ?? 0.0,
+            carbs: carb?.toDouble() ?? 0.0,
+            fats: fat?.toDouble() ?? 0.0,
+            fiber: fib?.toDouble() ?? 0.0,
+            isEstimate: false,
+            confidence: defaultConf,
+          ),
+        );
+        continue;
+      }
+
+      var lookupResult = await NutritionDB.lookup(name, grams);
+      if (lookupResult == null) {
+        final simplifiedName = name
+            .replaceAll(
+              RegExp(
+                r'\b(cooked|grilled|boiled|fried)\b',
+                caseSensitive: false,
+              ),
+              '',
+            )
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (simplifiedName.isNotEmpty && simplifiedName != name) {
+          lookupResult = await NutritionDB.lookup(simplifiedName, grams);
+        }
+      }
+      lookupResult ??= NutritionDB.getFallbackEstimate(name, grams);
+
+      results.add(
+        FoodNutritionResult(
+          foodName: lookupResult.foodName,
+          grams: lookupResult.grams,
+          calories: lookupResult.calories,
+          protein: lookupResult.protein,
+          carbs: lookupResult.carbs,
+          fats: lookupResult.fats,
+          fiber: lookupResult.fiber,
+          isEstimate: lookupResult.isEstimate,
+          confidence: lookupResult.isEstimate ? 0.5 : defaultConf,
+        ),
+      );
+    }
+    return results;
+  }
+
   Future<void> _analyzeFood() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -2022,242 +2588,56 @@ class _FoodScanLoadingScreenState extends State<FoodScanLoadingScreen> {
         return;
       }
 
-      // Retry logic: Render free tier cold starts can cause the first request to
-      // time out or return 503. We retry up to 2 times with increasing timeouts.
-      http.Response? response;
-      String? lastError;
-      for (int attempt = 0; attempt < 2; attempt++) {
+      List<FoodNutritionResult>? results;
+      dynamic analysisError;
+
+      final Future<void> wrappedAnalysis = () async {
         try {
-          response = await _sendFoodRequest(token);
-          // If we got a 503 (server waking up), retry after a short delay
-          if (response.statusCode == 503 && attempt < 1) {
-            debugPrint(
-              '[FoodScan] Server busy (503), retrying in 4s... (attempt ${attempt + 1})',
-            );
-            await Future.delayed(const Duration(seconds: 4));
-            continue;
-          }
-          break; // Got a non-503 response, stop retrying
-        } on TimeoutException {
-          lastError = 'timeout';
-          debugPrint('[FoodScan] Request timed out (attempt ${attempt + 1})');
-          if (attempt < 1) {
-            await Future.delayed(const Duration(seconds: 2));
-            continue;
-          }
-        } on SocketException catch (e) {
-          lastError = 'network';
-          debugPrint('[FoodScan] Network error: $e (attempt ${attempt + 1})');
-          if (attempt < 1) {
-            await Future.delayed(const Duration(seconds: 2));
-            continue;
-          }
+          results = await _runAnalysis(token);
         } catch (e) {
-          lastError = e.toString();
-          debugPrint('[FoodScan] Request error: $e (attempt ${attempt + 1})');
-          if (attempt < 1) {
-            await Future.delayed(const Duration(seconds: 2));
-            continue;
-          }
+          analysisError = e;
         }
-      }
+      }();
 
-      if (response == null) {
-        if (lastError == 'timeout') {
-          _showErrorAndPop(
-            'Server is starting up. Please wait a moment and try again.',
-          );
-        } else if (lastError == 'network') {
-          _showErrorAndPop(
-            'No internet connection. Please check your network.',
-          );
-        } else {
-          _showErrorAndPop('Could not reach server. Please try again.');
-        }
-        return;
-      }
-
-      debugPrint('[FoodScan] Response status: ${response.statusCode}');
-      debugPrint(
-        '[FoodScan] Response body: ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}',
-      );
-
-      if (response.statusCode == 401) {
-        _showErrorAndPop(
-          'Session expired. Please restart the app and try again.',
+      final Completer<void> adCompleter = Completer<void>();
+      if (!BillingService().isPremium) {
+        AdService().showFoodScanAd(
+          onComplete: () {
+            if (!adCompleter.isCompleted) adCompleter.complete();
+          },
         );
-        return;
+      } else {
+        adCompleter.complete();
       }
 
-      if (response.statusCode == 429) {
-        _showErrorAndPop('Too many requests. Please wait a few minutes.');
-        return;
-      }
+      await Future.wait([wrappedAnalysis, adCompleter.future]);
 
-      if (response.statusCode == 503) {
-        _showErrorAndPop(
-          'Server is waking up. Please wait 30 seconds and try again.',
-        );
-        return;
-      }
-
-      if (response.statusCode != 200) {
-        // Try to extract error message from response body
-        try {
-          final errData = jsonDecode(response.body);
-          final errMsg =
-              errData['error'] as String? ??
-              'Server error (${response.statusCode})';
-          _showErrorAndPop(errMsg);
-        } catch (_) {
-          _showErrorAndPop(
-            'Server error (${response.statusCode}). Please try again.',
-          );
-        }
-        return;
-      }
-
-      final data = jsonDecode(response.body);
-      if (data['success'] != true) {
-        final errMsg = data['error'] as String? ?? 'Analysis was unsuccessful.';
-        debugPrint('[FoodScan] Server returned success=false: $errMsg');
-        _showErrorAndPop(errMsg);
-        return;
-      }
-
-      final List<FoodNutritionResult> results = [];
-      final foodsList = data['foods'] as List? ?? [];
-
-      if (foodsList.isEmpty) {
-        _showErrorAndPop(
-          'No food detected in the photo. Try pointing the camera directly at your food.',
-        );
-        return;
-      }
-
-      for (final f in foodsList) {
-        final name = f['name'] as String? ?? '';
-        final grams = (f['estimated_grams'] as num?)?.toDouble() ?? 100.0;
-        final confStr = f['confidence'] as String? ?? 'medium';
-        double defaultConf = 0.8;
-        if (confStr == 'high') defaultConf = 1.0;
-        if (confStr == 'low') defaultConf = 0.5;
-
-        final cal = f['calories'] as num?;
-        final pro = f['protein'] as num?;
-        final carb = f['carbs'] as num?;
-        final fat = f['fats'] as num?;
-        final fib = f['fiber'] as num?;
-
-        if (cal != null || pro != null || carb != null || fat != null) {
-          results.add(
-            FoodNutritionResult(
-              foodName: name,
-              grams: grams,
-              calories: cal?.toInt() ?? 0,
-              protein: pro?.toDouble() ?? 0.0,
-              carbs: carb?.toDouble() ?? 0.0,
-              fats: fat?.toDouble() ?? 0.0,
-              fiber: fib?.toDouble() ?? 0.0,
-              isEstimate: false,
-              confidence: defaultConf,
-            ),
-          );
-          continue;
-        }
-
-        var lookupResult = await NutritionDB.lookup(name, grams);
-
-        if (lookupResult == null) {
-          final simplifiedName = name
-              .replaceAll(
-                RegExp(
-                  r'\b(cooked|grilled|boiled|fried)\b',
-                  caseSensitive: false,
-                ),
-                '',
-              )
-              .replaceAll(RegExp(r'\s+'), ' ')
-              .trim();
-          if (simplifiedName.isNotEmpty && simplifiedName != name) {
-            lookupResult = await NutritionDB.lookup(simplifiedName, grams);
-          }
-        }
-
-        lookupResult ??= NutritionDB.getFallbackEstimate(name, grams);
-
-        if (lookupResult.isEstimate) {
-          results.add(
-            FoodNutritionResult(
-              foodName: lookupResult.foodName,
-              grams: lookupResult.grams,
-              calories: lookupResult.calories,
-              protein: lookupResult.protein,
-              carbs: lookupResult.carbs,
-              fats: lookupResult.fats,
-              fiber: lookupResult.fiber,
-              isEstimate: true,
-              confidence: 0.5,
-            ),
-          );
-        } else {
-          results.add(
-            FoodNutritionResult(
-              foodName: lookupResult.foodName,
-              grams: lookupResult.grams,
-              calories: lookupResult.calories,
-              protein: lookupResult.protein,
-              carbs: lookupResult.carbs,
-              fats: lookupResult.fats,
-              fiber: lookupResult.fiber,
-              isEstimate: false,
-              confidence: defaultConf,
-            ),
-          );
-        }
+      if (analysisError != null) {
+        throw analysisError;
       }
 
       await FoodScanCountService.recordScan();
 
-      if (!context.mounted) return;
+      if (!mounted) return;
 
-      void proceedToResult() async {
-        final res = await Navigator.push(
-          context,
-          _slideRoute(
-            FoodScanResultScreen(
-              imagePath: widget.imagePath,
-              mealType: widget.mealType,
-              foods: results,
-              selectedDate: widget.selectedDate,
-            ),
+      final res = await Navigator.push(
+        context,
+        _slideRoute(
+          FoodScanResultScreen(
+            imagePath: widget.imagePath,
+            mealType: widget.mealType,
+            foods: results!,
+            selectedDate: widget.selectedDate,
           ),
-        );
-        if (context.mounted) {
-          var context2 = context;
-          Navigator.pop(context2, res);
-        }
-      }
-
-      if (!BillingService().isPremium) {
-        await AdService().showFoodScanAd(onComplete: proceedToResult);
-      } else {
-        proceedToResult();
-      }
-    } on TimeoutException {
-      debugPrint('[FoodScan] Final timeout');
-      _showErrorAndPop(
-        'Server is starting up. Please wait a moment and try again.',
+        ),
       );
-    } on SocketException {
-      debugPrint('[FoodScan] Socket exception');
-      _showErrorAndPop('No internet connection. Please check your network.');
-    } on FormatException catch (e) {
-      debugPrint('[FoodScan] JSON parse error: $e');
-      _showErrorAndPop('Server returned invalid data. Please try again.');
+      if (mounted) {
+        Navigator.pop(context, res);
+      }
     } catch (e) {
-      debugPrint('[FoodScan] Unexpected error: $e');
-      _showErrorAndPop('Something went wrong. Please try again.');
+      debugPrint('[FoodScan] Analysis failed: $e');
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _showErrorAndPop(msg);
     }
   }
 
@@ -2340,6 +2720,7 @@ class FoodScanResultScreen extends StatefulWidget {
 }
 
 class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
+  bool _saving = false;
   int _targetCal = 2000;
   int _targetPro = 150;
   int _targetCarb = 200;
@@ -2352,10 +2733,21 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
   double _todayFat = 0;
   double _todayFib = 0;
 
+  late List<FoodNutritionResult> _currentFoods;
+  final TextEditingController _correctionController = TextEditingController();
+  bool _correcting = false;
+
   @override
   void initState() {
     super.initState();
+    _currentFoods = List.from(widget.foods);
     _loadTargetsAndToday();
+  }
+
+  @override
+  void dispose() {
+    _correctionController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadTargetsAndToday() async {
@@ -2453,13 +2845,266 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
     );
   }
 
+  Future<List<FoodNutritionResult>> _sendCorrectionRequest(
+    String correctionText,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Please log in to scan food.');
+    final token = await user.getIdToken(true);
+    if (token == null) throw Exception('Authentication failed.');
+
+    final uri = Uri.parse(
+      'https://level-maxing-backend.onrender.com/food-analyze',
+    );
+    final request = http.MultipartRequest('POST', uri);
+    request.headers['Authorization'] = 'Bearer $token';
+    request.fields['mealType'] = widget.mealType;
+    request.fields['correction'] = correctionText;
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'frontImage',
+        widget.imagePath,
+        contentType: MediaType('image', 'jpeg'),
+      ),
+    );
+
+    final streamedResponse = await request.send().timeout(
+      const Duration(seconds: 120),
+    );
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode != 200) {
+      try {
+        final errData = jsonDecode(response.body);
+        throw Exception(errData['error'] as String? ?? 'Correction failed.');
+      } catch (_) {
+        throw Exception('Server error (${response.statusCode})');
+      }
+    }
+
+    final data = jsonDecode(response.body);
+    if (data['success'] != true) {
+      throw Exception(data['error'] as String? ?? 'Correction failed.');
+    }
+
+    final List<FoodNutritionResult> results = [];
+    final foodsList = data['foods'] as List? ?? [];
+    if (foodsList.isEmpty) {
+      throw Exception('No food detected with the correction.');
+    }
+
+    for (final f in foodsList) {
+      final name = f['name'] as String? ?? '';
+      final grams = (f['estimated_grams'] as num?)?.toDouble() ?? 100.0;
+      final confStr = f['confidence'] as String? ?? 'medium';
+      double defaultConf = 0.8;
+      if (confStr == 'high') defaultConf = 1.0;
+      if (confStr == 'low') defaultConf = 0.5;
+
+      final cal = f['calories'] as num?;
+      final pro = f['protein'] as num?;
+      final carb = f['carbs'] as num?;
+      final fat = f['fats'] as num?;
+      final fib = f['fiber'] as num?;
+
+      if (cal != null || pro != null || carb != null || fat != null) {
+        results.add(
+          FoodNutritionResult(
+            foodName: name,
+            grams: grams,
+            calories: cal?.toInt() ?? 0,
+            protein: pro?.toDouble() ?? 0.0,
+            carbs: carb?.toDouble() ?? 0.0,
+            fats: fat?.toDouble() ?? 0.0,
+            fiber: fib?.toDouble() ?? 0.0,
+            isEstimate: false,
+            confidence: defaultConf,
+          ),
+        );
+        continue;
+      }
+
+      var lookupResult = await NutritionDB.lookup(name, grams);
+      lookupResult ??= NutritionDB.getFallbackEstimate(name, grams);
+
+      results.add(
+        FoodNutritionResult(
+          foodName: lookupResult.foodName,
+          grams: lookupResult.grams,
+          calories: lookupResult.calories,
+          protein: lookupResult.protein,
+          carbs: lookupResult.carbs,
+          fats: lookupResult.fats,
+          fiber: lookupResult.fiber,
+          isEstimate: lookupResult.isEstimate,
+          confidence: lookupResult.isEstimate ? 0.5 : defaultConf,
+        ),
+      );
+    }
+    return results;
+  }
+
+  Future<void> _submitCorrection() async {
+    final text = _correctionController.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() {
+      _correcting = true;
+    });
+
+    FocusScope.of(context).unfocus();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFFFFD700)),
+      ),
+    );
+
+    try {
+      final results = await _sendCorrectionRequest(text);
+      if (mounted) {
+        Navigator.pop(context); // Pop spinner
+        setState(() {
+          _currentFoods = results;
+          _correctionController.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("✓ Meal details updated!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Pop spinner
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Correction failed: ${e.toString().replaceFirst('Exception: ', '')}",
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _correcting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _runBackgroundUpload({
+    required String entryId,
+    required String uid,
+    required String todayStr,
+    required String logKey,
+    required String localSavedPath,
+    required Map<String, dynamic> newEntryLocal,
+  }) async {
+    String remoteImageUrl = '';
+    try {
+      final storageRef =
+          FirebaseStorage.instanceFor(
+            bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app',
+          ).ref().child(
+            'users/$uid/food_logs/${DateTime.now().millisecondsSinceEpoch}.jpg',
+          );
+      final uploadTask = await storageRef.putFile(File(localSavedPath));
+      remoteImageUrl = await uploadTask.ref.getDownloadURL();
+    } catch (e) {
+      debugPrint('Failed to upload food log photo to Firebase Storage: $e');
+      await _markEntrySyncFailed(logKey, entryId);
+      _showBackgroundNotification(
+        "Sync Error: Failed to upload food log image.",
+        Colors.redAccent,
+      );
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('food_logs')
+          .add({
+            ...newEntryLocal,
+            'imagePath': remoteImageUrl,
+            'logDate': todayStr,
+            'createdAt': FieldValue.serverTimestamp(),
+            'expiresAt': DateTime.now().add(const Duration(days: 15)),
+          });
+
+      await _markEntrySyncSuccess(logKey, entryId);
+    } catch (e) {
+      debugPrint('Failed to save food log to Firestore: $e');
+      await _markEntrySyncFailed(logKey, entryId);
+      _showBackgroundNotification(
+        "Sync Error: Failed to sync food log to server.",
+        Colors.redAccent,
+      );
+    }
+  }
+
+  Future<void> _markEntrySyncSuccess(String logKey, String entryId) async {
+    final p = await SharedPreferences.getInstance();
+    final logJson = p.getString(logKey);
+    if (logJson != null && logJson.isNotEmpty) {
+      try {
+        final List<Map<String, dynamic>> logList = (jsonDecode(logJson) as List)
+            .cast<Map<String, dynamic>>();
+        for (var entry in logList) {
+          if (entry['id'] == entryId) {
+            entry['syncStatus'] = 'synced';
+            break;
+          }
+        }
+        await p.setString(logKey, jsonEncode(logList));
+        foodLogUpdateNotifier.value++;
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _markEntrySyncFailed(String logKey, String entryId) async {
+    final p = await SharedPreferences.getInstance();
+    final logJson = p.getString(logKey);
+    if (logJson != null && logJson.isNotEmpty) {
+      try {
+        final List<Map<String, dynamic>> logList = (jsonDecode(logJson) as List)
+            .cast<Map<String, dynamic>>();
+        for (var entry in logList) {
+          if (entry['id'] == entryId) {
+            entry['syncStatus'] = 'failed';
+            break;
+          }
+        }
+        await p.setString(logKey, jsonEncode(logList));
+        foodLogUpdateNotifier.value++;
+      } catch (_) {}
+    }
+  }
+
+  void _showBackgroundNotification(String message, Color color) {
+    final context = navigatorKey.currentContext;
+    if (context != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     int mealCal = 0;
     double mealPro = 0, mealCarb = 0, mealFat = 0, mealFib = 0;
     bool hasEstimate = false;
 
-    for (final f in widget.foods) {
+    for (final f in _currentFoods) {
       mealCal += f.calories;
       mealPro += f.protein;
       mealCarb += f.carbs;
@@ -2561,7 +3206,7 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: widget.foods.map((f) {
+              children: _currentFoods.map((f) {
                 String confBadge = '';
                 if (f.confidence >= 1.0) {
                   confBadge = '⚡';
@@ -2748,98 +3393,157 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
+            const Text(
+              "Correction / Notes",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _correctionController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: "e.g., This is actually tofu, not paneer",
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: const Color(0xFF161616),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    width: 1,
+                  ),
+                ),
+                suffixIcon: IconButton(
+                  icon: const Icon(
+                    Icons.send_rounded,
+                    color: Color(0xFFFFD700),
+                  ),
+                  onPressed: _correcting ? null : _submitCorrection,
+                ),
+              ),
+            ),
+            const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: () async {
-                  final user = FirebaseAuth.instance.currentUser;
-                  if (user == null) return;
-                  final uid = user.uid;
-                  final p = await SharedPreferences.getInstance();
-
-                  final targetDate = widget.selectedDate;
-                  final todayStr = targetDate.toIso8601String().substring(
-                    0,
-                    10,
-                  );
-                  final logKey = 'food_log_${uid}_$todayStr';
-
-                  final logJson = p.getString(logKey);
-                  final List<Map<String, dynamic>> logList =
-                      logJson != null && logJson.isNotEmpty
-                      ? (jsonDecode(logJson) as List)
-                            .cast<Map<String, dynamic>>()
-                      : [];
-
-                  String localSavedPath = widget.imagePath;
-                  try {
-                    final appDir = await getApplicationDocumentsDirectory();
-                    final timestamp = DateTime.now().millisecondsSinceEpoch;
-                    final targetPath = '${appDir.path}/food_$timestamp.jpg';
-                    final imageFile = File(widget.imagePath);
-                    if (await imageFile.exists()) {
-                      final copied = await imageFile.copy(targetPath);
-                      localSavedPath = copied.path;
-                    }
-                  } catch (_) {}
-
-                  final Map<String, dynamic> newEntry = {
-                    'mealType': widget.mealType,
-                    'foods': widget.foods
-                        .map(
-                          (f) => {
-                            'name': f.foodName,
-                            'grams': f.grams,
-                            'cal': f.calories,
-                            'pro': f.protein,
-                            'carb': f.carbs,
-                            'fat': f.fats,
-                            'fib': f.fiber,
-                            'isEstimate': f.isEstimate,
-                          },
-                        )
-                        .toList(),
-                    'totalCalories': mealCal,
-                    'totalProtein': mealPro,
-                    'totalCarbs': mealCarb,
-                    'totalFats': mealFat,
-                    'totalFiber': mealFib,
-                    'imagePath': localSavedPath,
-                    'timestamp': DateTime.now().millisecondsSinceEpoch,
-                  };
-
-                  logList.add(newEntry);
-                  await p.setString(logKey, jsonEncode(logList));
-
-                  try {
-                    await FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(uid)
-                        .collection('food_logs')
-                        .add({
-                          ...newEntry,
-                          'logDate': todayStr,
-                          'createdAt': FieldValue.serverTimestamp(),
-                          'expiresAt': DateTime.now().add(
-                            const Duration(days: 15),
-                          ),
+                onPressed: _saving
+                    ? null
+                    : () async {
+                        setState(() {
+                          _saving = true;
                         });
-                  } catch (_) {}
 
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          "✓ Saved to ${widget.mealType.substring(0, 1).toUpperCase() + widget.mealType.substring(1)}",
-                        ),
-                        backgroundColor: accentColor,
-                      ),
-                    );
-                    Navigator.pop(context, true);
-                  }
-                },
+                        try {
+                          final user = FirebaseAuth.instance.currentUser;
+                          if (user == null) return;
+                          final uid = user.uid;
+                          final p = await SharedPreferences.getInstance();
+
+                          final targetDate = widget.selectedDate;
+                          final todayStr = targetDate
+                              .toIso8601String()
+                              .substring(0, 10);
+                          final logKey = 'food_log_${uid}_$todayStr';
+
+                          final logJson = p.getString(logKey);
+                          final List<Map<String, dynamic>> logList =
+                              logJson != null && logJson.isNotEmpty
+                              ? (jsonDecode(logJson) as List)
+                                    .cast<Map<String, dynamic>>()
+                              : [];
+
+                          final String entryId =
+                              'food_entry_${DateTime.now().millisecondsSinceEpoch}';
+
+                          String localSavedPath = widget.imagePath;
+                          try {
+                            final appDir =
+                                await getApplicationDocumentsDirectory();
+                            final timestamp =
+                                DateTime.now().millisecondsSinceEpoch;
+                            final targetPath =
+                                '${appDir.path}/food_$timestamp.jpg';
+                            final imageFile = File(widget.imagePath);
+                            if (await imageFile.exists()) {
+                              final copied = await imageFile.copy(targetPath);
+                              localSavedPath = copied.path;
+                            }
+                          } catch (_) {}
+
+                          final Map<String, dynamic> newEntryLocal = {
+                            'id': entryId,
+                            'syncStatus': 'pending',
+                            'mealType': widget.mealType,
+                            'foods': _currentFoods
+                                .map(
+                                  (f) => {
+                                    'name': f.foodName,
+                                    'grams': f.grams,
+                                    'cal': f.calories,
+                                    'pro': f.protein,
+                                    'carb': f.carbs,
+                                    'fat': f.fats,
+                                    'fib': f.fiber,
+                                    'isEstimate': f.isEstimate,
+                                  },
+                                )
+                                .toList(),
+                            'totalCalories': mealCal,
+                            'totalProtein': mealPro,
+                            'totalCarbs': mealCarb,
+                            'totalFats': mealFat,
+                            'totalFiber': mealFib,
+                            'imagePath': localSavedPath,
+                            'timestamp': DateTime.now().millisecondsSinceEpoch,
+                          };
+
+                          logList.add(newEntryLocal);
+                          await p.setString(logKey, jsonEncode(logList));
+                          foodLogUpdateNotifier.value++;
+
+                          _runBackgroundUpload(
+                            entryId: entryId,
+                            uid: uid,
+                            todayStr: todayStr,
+                            logKey: logKey,
+                            localSavedPath: localSavedPath,
+                            newEntryLocal: newEntryLocal,
+                          );
+
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  "✓ Saved to ${widget.mealType.substring(0, 1).toUpperCase() + widget.mealType.substring(1)}",
+                                ),
+                                backgroundColor: accentColor,
+                              ),
+                            );
+                            Navigator.pop(context, true);
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("Failed to save: $e"),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        } finally {
+                          if (mounted) {
+                            setState(() {
+                              _saving = false;
+                            });
+                          }
+                        }
+                      },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFFD700),
                   foregroundColor: Colors.black,
@@ -2848,10 +3552,22 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
                   ),
                   elevation: 0,
                 ),
-                child: const Text(
-                  "Save to Log ✓",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
+                child: _saving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
+                      )
+                    : const Text(
+                        "Save to Log ✓",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 24),
@@ -2916,11 +3632,36 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final items = [
-      {'label': 'Name', 'value': _name.isNotEmpty ? _name : 'Not set', 'icon': Icons.person_rounded, 'color': const Color(0xFF5B9BF5)},
-      {'label': 'Gender', 'value': _gender.isNotEmpty ? _gender : 'Not set', 'icon': Icons.wc_rounded, 'color': const Color(0xFFF5A623)},
-      {'label': 'Height', 'value': _height.isNotEmpty ? '$_height cm' : 'Not set', 'icon': Icons.height_rounded, 'color': const Color(0xFF50E3C2)},
-      {'label': 'Weight', 'value': _weight.isNotEmpty ? '$_weight kg' : 'Not set', 'icon': Icons.monitor_weight_rounded, 'color': const Color(0xFF7ED321)},
-      {'label': 'Age', 'value': _age.isNotEmpty ? '$_age years' : 'Not set', 'icon': Icons.cake_rounded, 'color': const Color(0xFFD0021B)},
+      {
+        'label': 'Name',
+        'value': _name.isNotEmpty ? _name : 'Not set',
+        'icon': Icons.person_rounded,
+        'color': const Color(0xFF5B9BF5),
+      },
+      {
+        'label': 'Gender',
+        'value': _gender.isNotEmpty ? _gender : 'Not set',
+        'icon': Icons.wc_rounded,
+        'color': const Color(0xFFF5A623),
+      },
+      {
+        'label': 'Height',
+        'value': _height.isNotEmpty ? '$_height cm' : 'Not set',
+        'icon': Icons.height_rounded,
+        'color': const Color(0xFF50E3C2),
+      },
+      {
+        'label': 'Weight',
+        'value': _weight.isNotEmpty ? '$_weight kg' : 'Not set',
+        'icon': Icons.monitor_weight_rounded,
+        'color': const Color(0xFF7ED321),
+      },
+      {
+        'label': 'Age',
+        'value': _age.isNotEmpty ? '$_age years' : 'Not set',
+        'icon': Icons.cake_rounded,
+        'color': const Color(0xFFD0021B),
+      },
     ];
 
     return Scaffold(
@@ -2948,19 +3689,24 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
                 style: TextStyle(color: Colors.white54, fontSize: 13),
               ),
               const SizedBox(height: 24),
-              
+
               // Name Card (Wide)
               GestureDetector(
                 onTap: () async {
                   Navigator.pop(context);
-                  await Navigator.push(context, _slideRoute(const ProfilePage()));
+                  await Navigator.push(
+                    context,
+                    _slideRoute(const ProfilePage()),
+                  );
                 },
                 child: Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     color: _card,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.05),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -2970,23 +3716,40 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
                           color: const Color(0xFF5B9BF5).withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(items[0]['icon'] as IconData, color: const Color(0xFF5B9BF5), size: 22),
+                        child: Icon(
+                          items[0]['icon'] as IconData,
+                          color: const Color(0xFF5B9BF5),
+                          size: 22,
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(items[0]['label'] as String, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                            Text(
+                              items[0]['label'] as String,
+                              style: const TextStyle(
+                                color: Colors.white38,
+                                fontSize: 11,
+                              ),
+                            ),
                             const SizedBox(height: 2),
                             Text(
                               items[0]['value'] as String,
-                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.chevron_right_rounded, color: Colors.white24),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Colors.white24,
+                      ),
                     ],
                   ),
                 ),
@@ -3013,7 +3776,9 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
                       color: _card,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: isUnset ? Colors.redAccent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                        color: isUnset
+                            ? Colors.redAccent.withValues(alpha: 0.2)
+                            : Colors.white.withValues(alpha: 0.05),
                       ),
                     ),
                     child: Column(
@@ -3023,8 +3788,20 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(item['label'] as String, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                            Icon(item['icon'] as IconData, color: (item['color'] as Color).withValues(alpha: 0.8), size: 18),
+                            Text(
+                              item['label'] as String,
+                              style: const TextStyle(
+                                color: Colors.white38,
+                                fontSize: 11,
+                              ),
+                            ),
+                            Icon(
+                              item['icon'] as IconData,
+                              color: (item['color'] as Color).withValues(
+                                alpha: 0.8,
+                              ),
+                              size: 18,
+                            ),
                           ],
                         ),
                         Text(
@@ -3041,10 +3818,14 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
                 },
               ),
               const SizedBox(height: 28),
-              
+
               Row(
                 children: [
-                  Icon(Icons.check_circle_rounded, color: Colors.green.shade400, size: 18),
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.green.shade400,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   const Text(
                     'Are these details correct?',
@@ -3089,7 +3870,10 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
                   ),
                   child: const Text(
                     'Edit in Profile',
-                    style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
@@ -3125,7 +3909,13 @@ class _ActivityScreenState extends State<_ActivityScreen> {
       (_workouts == '0' || _intensity != null) &&
       _steps != null;
 
-  Widget _actCard(String key, IconData icon, String title, String sub, Color accent) {
+  Widget _actCard(
+    String key,
+    IconData icon,
+    String title,
+    String sub,
+    Color accent,
+  ) {
     bool s = _activity == key;
     return GestureDetector(
       onTap: () => setState(() => _activity = key),
@@ -3173,7 +3963,9 @@ class _ActivityScreenState extends State<_ActivityScreen> {
               ),
             ),
             Icon(
-              s ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+              s
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
               color: s ? _gold : Colors.white24,
               size: 20,
             ),
@@ -3608,7 +4400,9 @@ class _GoalScreenState extends State<_GoalScreen> {
                             color: s ? _gold.withValues(alpha: 0.08) : _card,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: s ? _gold : Colors.white.withValues(alpha: 0.05),
+                              color: s
+                                  ? _gold
+                                  : Colors.white.withValues(alpha: 0.05),
                               width: s ? 2 : 1,
                             ),
                           ),
@@ -3617,7 +4411,9 @@ class _GoalScreenState extends State<_GoalScreen> {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: (s ? _gold : accentColor).withValues(alpha: 0.1),
+                                  color: (s ? _gold : accentColor).withValues(
+                                    alpha: 0.1,
+                                  ),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
@@ -3651,7 +4447,9 @@ class _GoalScreenState extends State<_GoalScreen> {
                                 ),
                               ),
                               Icon(
-                                s ? Icons.check_circle_rounded : Icons.radio_button_off_rounded,
+                                s
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_off_rounded,
                                 color: s ? _gold : Colors.white24,
                                 size: 20,
                               ),
@@ -3737,8 +4535,16 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
       'Slow Metabolism',
       'I gain weight easily, even when eating little. Weight loss requires strict control.',
     ],
-    ['normal', 'Normal Metabolism', 'My weight is fairly stable, predictable, and responsive to activity.'],
-    ['fast', 'Fast Metabolism', 'I stay lean easily. I can consume higher calories without gaining weight.'],
+    [
+      'normal',
+      'Normal Metabolism',
+      'My weight is fairly stable, predictable, and responsive to activity.',
+    ],
+    [
+      'fast',
+      'Fast Metabolism',
+      'I stay lean easily. I can consume higher calories without gaining weight.',
+    ],
   ];
 
   IconData _mi(String k) => k == 'slow'
@@ -3789,7 +4595,9 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                       decoration: BoxDecoration(
                         color: _gold.withValues(alpha: 0.03),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: _gold.withValues(alpha: 0.15)),
+                        border: Border.all(
+                          color: _gold.withValues(alpha: 0.15),
+                        ),
                       ),
                       child: Column(
                         children: [
@@ -3865,7 +4673,9 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                             color: s ? _gold.withValues(alpha: 0.08) : _card,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: s ? _gold : Colors.white.withValues(alpha: 0.05),
+                              color: s
+                                  ? _gold
+                                  : Colors.white.withValues(alpha: 0.05),
                               width: s ? 2 : 1,
                             ),
                           ),
@@ -3877,7 +4687,11 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                                   color: iconColor.withValues(alpha: 0.1),
                                   shape: BoxShape.circle,
                                 ),
-                                child: Icon(_mi(key), color: iconColor, size: 22),
+                                child: Icon(
+                                  _mi(key),
+                                  color: iconColor,
+                                  size: 22,
+                                ),
                               ),
                               const SizedBox(width: 16),
                               Expanded(
@@ -3904,7 +4718,9 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                                 ),
                               ),
                               Icon(
-                                s ? Icons.check_circle_rounded : Icons.radio_button_off_rounded,
+                                s
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_off_rounded,
                                 color: s ? _gold : Colors.white24,
                                 size: 20,
                               ),
@@ -4144,7 +4960,9 @@ class _ReviewScreenState extends State<_ReviewScreen> {
                       decoration: BoxDecoration(
                         color: _card,
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.05),
+                        ),
                       ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -4207,7 +5025,9 @@ class _ReviewScreenState extends State<_ReviewScreen> {
                       decoration: BoxDecoration(
                         color: _gold.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: _gold.withValues(alpha: 0.15)),
+                        border: Border.all(
+                          color: _gold.withValues(alpha: 0.15),
+                        ),
                       ),
                       child: const Row(
                         children: [
@@ -4794,5 +5614,3 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     );
   }
 }
-
-

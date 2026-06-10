@@ -382,52 +382,60 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _signOut() async {
-  final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-    backgroundColor: const Color(0xFF1A1A1A),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    title: const Row(children: [Icon(Icons.logout, color: Color(0xFFFFD700), size: 22), SizedBox(width: 10),
-      Text('Sign Out', style: TextStyle(color: Colors.white))]),
-    content: const Text('Are you sure?', style: TextStyle(color: Colors.white70)),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-      ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
-        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-        child: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold))),
-    ],
-  ));
-  if (confirm != true) return;
-  try {
-    await LockInNotificationService.cancelAll();
-  } catch (_) {}
-  try {
-    await NotificationService.removeTokenOnLogout();
-  } catch (_) {}
-  try {
-    await ScanCooldownService.cancelNotification();
-  } catch (_) {}
-  BillingService().clearPremiumState();
-  AdService().clearOnSignOut();
-  try {
-    await ScanCooldownService.clearLocalCache();
-  } catch (_) {}
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-  } catch (_) {}
-  try {
-    await GoogleSignIn().signOut();
-  } catch (_) {}
-  try {
-    await FirebaseAuth.instance.signOut();
-  } catch (_) {}
-  if (!mounted) return;
-  Navigator.pushAndRemoveUntil(
-    context,
-    MaterialPageRoute(builder: (_) => const LoginScreen()),
-    (r) => false,
-  );
- }
+    final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Row(children: [Icon(Icons.logout, color: Color(0xFFFFD700), size: 22), SizedBox(width: 10),
+        Text('Sign Out', style: TextStyle(color: Colors.white))]),
+      content: const Text('Are you sure?', style: TextStyle(color: Colors.white70)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+        ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+          child: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold))),
+      ],
+    ));
+    if (confirm != true) return;
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFFFFD700)),
+      ),
+    );
+
+    Future<void> safe(Future<dynamic> f) async {
+      try {
+        await f;
+      } catch (_) {}
+    }
+
+    try {
+      await Future.wait([
+        safe(LockInNotificationService.cancelAll()),
+        safe(NotificationService.removeTokenOnLogout()),
+        safe(ScanCooldownService.cancelNotification()),
+        safe(ScanCooldownService.clearLocalCache()),
+        safe(SharedPreferences.getInstance().then((p) => p.clear())),
+        safe(GoogleSignIn().signOut()),
+        safe(FirebaseAuth.instance.signOut()),
+      ]).timeout(const Duration(seconds: 4));
+    } catch (_) {}
+
+    BillingService().clearPremiumState();
+    AdService().clearOnSignOut();
+
+    if (!mounted) return;
+    Navigator.pop(context); // dismiss loading spinner
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (r) => false,
+    );
+  }
 
   Future<void> _contactUs() async {
     final uri = Uri(scheme: 'mailto', path: 'levelmaxing952@gmail.com');

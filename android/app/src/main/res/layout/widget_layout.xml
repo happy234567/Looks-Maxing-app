@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_bg"
+    android:padding="12dp">
+
+    <!-- Header / Title -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="LEVEL MAX"
+        android:textColor="#66FFFFFF"
+        android:textSize="9sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.15"
+        android:gravity="center"
+        android:layout_marginBottom="8dp" />
+
+    <!-- 1. Lock In Card -->
+    <LinearLayout
+        android:id="@+id/btn_lock_in"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/widget_btn_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="10dp"
+        android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔒"
+                android:textSize="16sp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Lock In — Today's Tasks"
+                android:textColor="#FFD700"
+                android:textStyle="bold"
+                android:textSize="12sp"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <!-- Tasks list container (dynamic text view) -->
+        <TextView
+            android:id="@+id/widget_tasks_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="• Loading tasks..."
+            android:textColor="#B0FFFFFF"
+            android:textSize="11sp"
+            android:layout_marginTop="6dp"
+            android:layout_marginStart="24dp"
+            android:lineSpacingExtra="2dp" />
+    </LinearLayout>
+
+    <!-- 2. Food Scan Card -->
+    <LinearLayout
+        android:id="@+id/btn_food_scan"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@drawable/widget_btn_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="10dp"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🥗"
+            android:textSize="20sp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Food Scan"
+                android:textColor="#FFD700"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Scan meals with camera"
+                android:textColor="#88FFFFFF"
+                android:textSize="10sp"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 3. Face Scan Card -->
+    <LinearLayout
+        android:id="@+id/btn_face_scan"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@drawable/widget_btn_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="10dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📸"
+            android:textSize="20sp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Face Scan"
+                android:textColor="#FFD700"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Check ratings &amp; progression"
+                android:textColor="#88FFFFFF"
+                android:textSize="10sp"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

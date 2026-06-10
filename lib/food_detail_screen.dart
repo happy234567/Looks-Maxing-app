@@ -74,10 +74,15 @@ class FoodDetailScreen extends StatelessWidget {
                   if (hasImage) ...[
                     Hero(
                       tag: imagePath!,
-                      child: Image.file(
-                        File(imagePath!),
-                        fit: BoxFit.cover,
-                      ),
+                      child: imagePath!.startsWith('http')
+                          ? Image.network(
+                              imagePath!,
+                              fit: BoxFit.cover,
+                            )
+                          : Image.file(
+                              File(imagePath!),
+                              fit: BoxFit.cover,
+                            ),
                     ),
                     // Elegant dark gradient overlays
                     Container(

@@ -464,6 +464,11 @@ Future<void> _save(LockInData data) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kKey, encoded);
   } catch (_) {}
+
+  // Trigger widget refresh
+  try {
+    const MethodChannel('com.levelmaxing.app/widget').invokeMethod('updateWidget');
+  } catch (_) {}
 }
 
 Future<void> _deleteSaved() async {

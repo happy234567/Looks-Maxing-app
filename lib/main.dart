@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'notification_plugin.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -19,9 +20,9 @@ import 'notification_service.dart';
 import 'lock_in_notification_service.dart'; // ← NEW
 import 'scan_cooldown_service.dart';
 import 'deleted_users_service.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:ui';
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -134,156 +135,121 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _initApp() async {
-    // 1. Check for internet connectivity first!
-    bool hasInternet = true;
+    // 1. Initialize Firebase first (essential for Auth state/checking logged in user)
     try {
-      final result = await InternetAddress.lookup('google.com').timeout(const Duration(seconds: 5));
-      if (result.isEmpty || result[0].rawAddress.isEmpty) {
-        hasInternet = false;
-      }
-    } catch (_) {
-      hasInternet = false;
-    }
-
-    if (!hasInternet) {
-      if (mounted) {
-        setState(() {
-          _isOffline = true;
-        });
-      }
-      return; // Stop initialization
-    }
-
-    // 2. WAKE UP FIREBASE SECOND (with timeout)
-    try {
-      await Firebase.initializeApp().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('Firebase timeout'),
+      await Firebase.initializeApp();
+      // Configure firestore settings for cache persistence
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
       );
     } catch (e) {
       debugPrint("Firebase init failed: $e");
     }
 
-    // 2b. Initialize Firebase Analytics (auto screen tracking via observer)
+    // 2. Initialize SharedPreferences early to retrieve cache status
+    SharedPreferences? prefs;
     try {
-      analytics = FirebaseAnalytics.instance;
-      analyticsObserver = FirebaseAnalyticsObserver(analytics: analytics);
-      debugPrint('[Analytics] Firebase Analytics initialized');
-    } catch (e) {
-      debugPrint('[Analytics] Init failed: $e');
-    }
-
-    try {
-      FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true,
-        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-      );
+      prefs = await SharedPreferences.getInstance();
     } catch (_) {}
-
-    try {
-      FlutterError.onError = (FlutterErrorDetails details) {
-        FlutterError.presentError(details);
-        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-      };
-      PlatformDispatcher.instance.onError = (error, stack) {
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-        return true;
-      };
-    } catch (_) {}
-
-    try {
-      await LockInNotificationService.initialize().timeout(const Duration(seconds: 3));
-      } catch (_) {}
-
-    // Initialize FCM notifications (permissions, token, foreground/background handlers)
-    try {
-      // Removed the 5-second timeout because the OS permission dialog pauses 
-      // execution until the user clicks Allow/Deny. 
-      await NotificationService.initialize();
-    } catch (e) {
-      debugPrint("Notification init failed: $e");
-    }
-
-
-    try {
-      await ScanCooldownService.initialize().timeout(const Duration(seconds: 3));
-    } catch (_) {}
-
-    try {
-      await BillingService().initialize().timeout(const Duration(seconds: 5));
-    } catch (_) {}
-
-    // Scope ALL per-user state to the currently signed-in user.
-    // This prevents cross-account leakage of premium, cooldown, and ad state.
-    final earlyUser = FirebaseAuth.instance.currentUser;
-    if (earlyUser != null) {
-      // Clear stale local cache from any previous account
-      try {
-        await ScanCooldownService.clearLocalCache();
-      } catch (_) {}
-
-      // Re-sync cooldown from Firestore for THIS user
-      try {
-        await ScanCooldownService.syncFromFirestore().timeout(const Duration(seconds: 5));
-      } catch (_) {}
-
-      // Bind premium state to THIS user
-      try {
-        await BillingService().resetForUser(earlyUser.uid).timeout(const Duration(seconds: 5));
-      } catch (_) {}
-    } else {
-      BillingService().clearPremiumState();
-    }
-
-    try {
-      await AdService().initialize().timeout(const Duration(seconds: 5));
-    } catch (_) {}
-
-    // Scope ad state to current user
-    if (earlyUser != null) {
-      try {
-        AdService().resetForUser(earlyUser.uid);
-      } catch (_) {}
-    } else {
-      AdService().clearOnSignOut();
-    }
-
-    // Show app open ad for returning free users.
-    // The ad service has built-in wait logic: if the ad is still loading,
-    // it waits up to 8s before giving up. So we only need a tiny delay
-    // to let the UI settle after the splash screen.
-    Future.delayed(const Duration(milliseconds: 500), () async {
-      try {
-        final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser == null) {
-          debugPrint('[AdService] No user signed in — skipping app open ad');
-          return;
-        }
-        final billing = BillingService();
-        if (!billing.isPremium) {
-          await AdService().showAppOpenAdIfReady();
-        }
-      } catch (_) {}
-    });
 
     final user = FirebaseAuth.instance.currentUser;
+
+    // 3. Kick off all other initializations concurrently in the background,
+    // so we can boot the UI and resolve the initial screen instantly.
+    Future.microtask(() async {
+      Future<void> safe(Future<dynamic> f) async {
+        try {
+          await f;
+        } catch (_) {}
+      }
+
+      try {
+        analytics = FirebaseAnalytics.instance;
+        analyticsObserver = FirebaseAnalyticsObserver(analytics: analytics);
+      } catch (e) {
+        debugPrint('[Analytics] Init failed: $e');
+      }
+
+      try {
+        FlutterError.onError = (FlutterErrorDetails details) {
+          FlutterError.presentError(details);
+          FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+        };
+        PlatformDispatcher.instance.onError = (error, stack) {
+          FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+          return true;
+        };
+      } catch (_) {}
+
+      // Run independent initializations in parallel
+      try {
+        await Future.wait([
+          safe(LockInNotificationService.initialize()),
+          safe(NotificationService.initialize()),
+          safe(ScanCooldownService.initialize()),
+          safe(BillingService().initialize()),
+          safe(AdService().initialize()),
+        ]).timeout(const Duration(seconds: 4));
+      } catch (_) {}
+
+      if (user != null) {
+        try {
+          await ScanCooldownService.clearLocalCache();
+        } catch (_) {}
+        
+        try {
+          await Future.wait([
+            safe(ScanCooldownService.syncFromFirestore()),
+            safe(BillingService().resetForUser(user.uid)),
+            safe(Future.sync(() => AdService().resetForUser(user.uid))),
+          ]).timeout(const Duration(seconds: 4));
+        } catch (_) {}
+      } else {
+        BillingService().clearPremiumState();
+        AdService().clearOnSignOut();
+      }
+
+      // Show app open ad for returning free users
+      if (user != null) {
+        try {
+          final billing = BillingService();
+          if (!billing.isPremium) {
+            await AdService().showAppOpenAdIfReady();
+          }
+        } catch (_) {}
+      }
+    });
+
     Widget initialScreen = const LoginScreen();
 
     if (user != null) {
-      // Check if user is in deletion cooldown
-      try {
-        final cooldown = await DeletedUsersService.checkCooldown(user.uid);
-        if (cooldown.blocked) {
-          // User is in cooldown — sign them out and force login screen
-          BillingService().clearPremiumState();
-          await FirebaseAuth.instance.signOut();
-          initialScreen = const LoginScreen();
-        } else {
-          initialScreen = await _resolveUserScreen(user.uid);
+      // Check if user has cached username locally. If so, go to MainNavigation immediately!
+      final hasUsername = prefs != null &&
+          prefs.getString('username') != null &&
+          prefs.getString('username') != '';
+      
+      if (hasUsername) {
+        initialScreen = const MainNavigation();
+      } else {
+        // Resolve initial screen from cache / Firestore
+        try {
+          // Check if user is in deletion cooldown
+          final cooldown = await DeletedUsersService.checkCooldown(user.uid).timeout(const Duration(seconds: 3));
+          if (cooldown.blocked) {
+            BillingService().clearPremiumState();
+            await FirebaseAuth.instance.signOut();
+            try {
+              await GoogleSignIn().signOut();
+            } catch (_) {}
+            initialScreen = const LoginScreen();
+          } else {
+            initialScreen = await _resolveUserScreen(user.uid);
+          }
+        } catch (_) {
+          // If Firestore is offline / times out, fallback to MainNavigation if logged in, or LoginScreen
+          initialScreen = hasUsername ? const MainNavigation() : const LoginScreen();
         }
-      } catch (_) {
-        // Cooldown check failed (offline?) — fallback to normal flow
-        initialScreen = await _resolveUserScreen(user.uid);
       }
     }
 
@@ -461,11 +427,51 @@ class MainNavigation extends StatefulWidget {
  
 class _MainNavigationState extends State<MainNavigation> {
   late int _currentIndex;
+  static const _channel = MethodChannel('com.levelmaxing.app/widget');
  
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialTab;
+    _initWidgetChannel();
+  }
+
+  void _initWidgetChannel() {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'onActionReceived') {
+        final action = call.arguments as String?;
+        _handleAction(action);
+      }
+    });
+    // Also fetch initial action
+    _channel.invokeMethod<String>('getInitialAction').then((action) {
+      if (action != null) {
+        _handleAction(action);
+      }
+    });
+    // Trigger widget refresh on startup
+    _channel.invokeMethod('updateWidget').catchError((_) {});
+  }
+
+  void _handleAction(String? action) {
+    if (action == null) return;
+    int targetIndex = _currentIndex;
+    switch (action) {
+      case 'face_scan':
+        targetIndex = 0;
+        break;
+      case 'food_scan':
+        targetIndex = 1;
+        break;
+      case 'lock_in':
+        targetIndex = 2;
+        break;
+    }
+    if (targetIndex != _currentIndex && mounted) {
+      setState(() {
+        _currentIndex = targetIndex;
+      });
+    }
   }
 
   final List<Widget> _pages = [
@@ -1733,156 +1739,159 @@ class _FaceRatingPageState extends State<FaceRatingPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            // Column 1: Latest Score Gauge Card
-            Expanded(
-              flex: 4,
-              child: Container(
-                height: 140,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF161616),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                ),
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        SizedBox(
-                          width: 68,
-                          height: 68,
-                          child: _ProgressAnimatedCircularBar(
-                            value: _latestScore / 100,
-                            color: latestColor,
-                            delay: 300,
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Column 1: Latest Score Gauge Card
+              Expanded(
+                flex: 4,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF161616),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: 68,
+                            height: 68,
+                            child: _ProgressAnimatedCircularBar(
+                              value: _latestScore / 100,
+                              color: latestColor,
+                              delay: 300,
+                            ),
                           ),
-                        ),
-                        Text(
-                          '$_latestScore',
-                          style: TextStyle(
-                            color: latestColor,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
+                          Text(
+                            '$_latestScore',
+                            style: TextStyle(
+                              color: latestColor,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _getScoreLabel(_latestScore).toUpperCase(),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: latestColor.withValues(alpha: 0.8),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
+                        ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Text(
+                        _getScoreLabel(_latestScore).toUpperCase(),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: latestColor.withValues(alpha: 0.8),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
+              const SizedBox(width: 12),
 
-            // Column 2: Best & Avg Stats Cards
-            Expanded(
-              flex: 5,
-              child: Container(
-                height: 140,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF161616),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                ),
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Best Score Row
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFD700).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
+              // Column 2: Best & Avg Stats Cards
+              Expanded(
+                flex: 5,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF161616),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Best Score Row
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFD700).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.emoji_events_rounded,
+                                color: Color(0xFFFFD700), size: 16),
                           ),
-                          child: const Icon(Icons.emoji_events_rounded,
-                              color: Color(0xFFFFD700), size: 16),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'PERSONAL BEST',
-                                style: TextStyle(
-                                    color: Colors.white38,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w700),
-                              ),
-                              Text(
-                                '$_bestScore',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'PERSONAL BEST',
+                                  style: TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w700),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    // Average Score Row
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFB58EFF).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.analytics_rounded,
-                              color: Color(0xFFB58EFF), size: 16),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'AVERAGE SCORE',
-                                style: TextStyle(
-                                    color: Colors.white38,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w700),
-                              ),
-                              Text(
-                                _avgScore.toStringAsFixed(1),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
+                                Text(
+                                  '$_bestScore',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      // Average Score Row
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFB58EFF).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.analytics_rounded,
+                                color: Color(0xFFB58EFF), size: 16),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'AVERAGE SCORE',
+                                  style: TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                                Text(
+                                  _avgScore.toStringAsFixed(1),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 12),
 
@@ -2008,7 +2017,7 @@ class _FaceRatingPageState extends State<FaceRatingPage>
           ),
           const SizedBox(height: 24),
           SizedBox(
-            height: 130,
+            height: 145,
             child: ClipRect(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,

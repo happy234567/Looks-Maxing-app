@@ -515,6 +515,8 @@ app.post(
 
       filePath = req.file.path;
       const mealType = req.body.mealType || 'snack';
+      const description = req.body.description || '';
+      const correction = req.body.correction || '';
 
       if (!fs.existsSync(filePath)) {
         return res.status(400).json({ success: false, error: 'Failed to process uploaded image.' });
@@ -536,7 +538,7 @@ app.post(
         inlineData: { mimeType: 'image/jpeg', data: base64Data }
       };
 
-      const promptText = `You are an expert AI Nutritionist and Food Image Analyzer. Your task is to accurately identify the food items in the provided image and estimate their protions, nutritional values.
+      let promptText = `You are an expert AI Nutritionist and Food Image Analyzer. Your task is to accurately identify the food items in the provided image and estimate their protions, nutritional values.
 
 CRITICAL INSTRUCTIONS:
 1. EXACT PORTIONS: Do NOT default to 100g. Look at plate sizes, hands, or utensils to establish 3D volume. 1 standard roti = 40g. 1 cup cooked rice = 150g. 1 standard chicken breast = 170g. Dense foods (meat, wet rice) weigh more than light foods (bread, leaves). Give exact weights (e.g., 145g, 85g).
@@ -562,10 +564,18 @@ GIVE
   ],
   "meal_description": "2 rotis",
   "image_quality": "good"
-}
+}`;
 
-If image does not contain food: {"foods": [], "meal_description": "No food detected", "image_quality": "no_food"}
-If image is too blurry: {"foods": [], "meal_description": "Image too blurry", "image_quality": "poor"}`;
+      if (description) {
+        promptText += `\n\nADDITIONAL USER MEAL DESCRIPTION: The user describes this meal/cooking-method/ingredients as: "${description}". You MUST use this information to override visual assumptions where appropriate and provide highly accurate nutritional estimations.`;
+      }
+
+      if (correction) {
+        promptText += `\n\nCORRECTION REQUEST: The user has corrected the previous analysis with the following note: "${correction}". You MUST modify the food names, portions, or macros to align with this correction, while re-analyzing the image to ensure accuracy.`;
+      }
+
+      promptText += `\n\nIf image does not contain food: {"foods": [], "meal_description": "No food detected", "image_quality": "no_food"}`;
+      promptText += `\nIf image is too blurry: {"foods": [], "meal_description": "Image too blurry", "image_quality": "poor"}`;
 
       // Clean up temp file before model invocation to free space/cache
       try {

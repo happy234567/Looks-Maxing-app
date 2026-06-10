@@ -128,55 +128,35 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       // ── END COOLDOWN CHECK ───────────────────────────────────────────
 
-      // ── CLEAR PREVIOUS USER STATE ────────────────────────────────────
-      // Wipe all local caches from any previous account to prevent
-      // cross-account leakage (cooldown, ads, premium).
-      try {
-        await ScanCooldownService.clearLocalCache();
-      } catch (e) {
-        debugPrint('[Login] clearLocalCache failed: $e');
-      }
-      
-      try {
-        await NotificationService.saveTokenAfterLogin().timeout(
-          const Duration(seconds: 3),
-          onTimeout: () =>
-              debugPrint("Notification token save timed out - offline?"),
-        );
-      } catch (e) {
-        debugPrint("Notification save failed (offline?): $e");
-      }
-      if (!mounted) return;
+      // ── RUN USER INITIALIZATION & DATA SYNC IN PARALLEL ───────────────
+      // Kick off all reset/sync tasks concurrently to minimize wait times
+      final syncFuture = UserSyncService.fetchAndSync(
+        user.uid,
+        source: Source.server,
+      );
 
-      // Sync scan cooldown from Firestore (survives sign-out/data clear)
-      try {
-        await ScanCooldownService.syncFromFirestore();
-      } catch (e) {
-        debugPrint('Scan cooldown sync failed: $e');
+      Future<void> safe(Future<dynamic> f) async {
+        try {
+          await f;
+        } catch (_) {}
       }
-      if (!mounted) return;
 
-      // Bind premium state to THIS user (clears any previous account's state)
       try {
-        await BillingService().resetForUser(user.uid);
+        await Future.wait([
+          safe(ScanCooldownService.clearLocalCache()),
+          safe(NotificationService.saveTokenAfterLogin().timeout(const Duration(seconds: 3))),
+          safe(ScanCooldownService.syncFromFirestore()),
+          safe(BillingService().resetForUser(user.uid)),
+          safe(Future.sync(() => AdService().resetForUser(user.uid))),
+        ]).timeout(const Duration(seconds: 4));
       } catch (e) {
-        debugPrint('[Login] BillingService resetForUser failed: $e');
+        debugPrint('[Login] Concurrent resets failed/timed out: $e');
       }
-      if (!mounted) return;
 
-      // Reset ad state for THIS user
-      try {
-        AdService().resetForUser(user.uid);
-      } catch (e) {
-        debugPrint('[Login] AdService resetForUser failed: $e');
-      }
       if (!mounted) return;
 
       try {
-        final result = await UserSyncService.fetchAndSync(
-          user.uid,
-          source: Source.server,
-        );
+        final result = await syncFuture;
 
         if (!mounted) return;
 
