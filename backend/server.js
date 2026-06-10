@@ -536,7 +536,7 @@ app.post(
         inlineData: { mimeType: 'image/jpeg', data: base64Data }
       };
 
-      const promptText = `You are a world-class nutrition AI. Analyze this food image with forensic precision.
+      const promptText = `You are an expert AI Nutritionist and Food Image Analyzer. Your task is to accurately identify the food items in the provided image and estimate their protions, nutritional values.
 
 CRITICAL INSTRUCTIONS:
 1. EXACT PORTIONS: Do NOT default to 100g. Look at plate sizes, hands, or utensils to establish 3D volume. 1 standard roti = 40g. 1 cup cooked rice = 150g. 1 standard chicken breast = 170g. Dense foods (meat, wet rice) weigh more than light foods (bread, leaves). Give exact weights (e.g., 145g, 85g).
@@ -544,11 +544,14 @@ CRITICAL INSTRUCTIONS:
 3. NAMING: Use simple English and Indian terms (e.g., "white rice cooked", "roti wheat chapati", "chicken breast grilled", "dal moong cooked").
 4. COST SAVING (STRICT OUTPUT): Return ONLY a raw JSON object. NO markdown formatting like \`\`\`json. NO explanations. Start immediately with {.
 
+GIVE
+
 {
   "foods": [
     {
       "name": "roti wheat chapati",
       "estimated_grams": 80,
+      "unit": "ml", // Use "ml" for liquids, "g" for solids
       "calories": 237,
       "protein": 7.2,
       "carbs": 48.0,

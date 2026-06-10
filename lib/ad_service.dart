@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AdService {
   // ── Singleton ──────────────────────────────────────────────────────────────
@@ -35,11 +36,10 @@ class AdService {
   DateTime? _lastAppOpenShown;
   bool _initialized = false;
 
-  // Food scan interstitial (TEST ID — swap to production before release)
-  // PRODUCTION: 'ca-app-pub-1840880800077412/4819448534'
-  static const String _foodInterstitialId = 'ca-app-pub-3940256099942544/1033173712';
-  InterstitialAd? _foodInterstitialAd;
-  bool _isLoadingFoodInterstitial = false;
+  // Food scan rewarded ad
+  static const String _foodRewardedAdUnitId = 'ca-app-pub-1840880800077412/9958094109';
+  RewardedAd? _foodRewardedAd;
+  bool _isLoadingFoodRewarded = false;
 
   /// Timestamp when the app open ad was loaded. Ads expire after ~4 hours;
   /// we conservatively discard after 3 hours to avoid showing stale ads.
@@ -58,7 +58,7 @@ class AdService {
     debugPrint('[AdService] Initialized for user=$_activeUserId');
     _preloadRewarded();
     _preloadAppOpen();
-    preloadFoodInterstitial();
+    preloadFoodRewardedAd();
   }
 
   // ── Account-scoped reset ─────────────────────────────────────────────────
@@ -83,14 +83,14 @@ class AdService {
     _rewardedRetryCount = 0;
     _appOpenRetryCount  = 0;
 
-    _foodInterstitialAd?.dispose();
-    _foodInterstitialAd = null;
-    _isLoadingFoodInterstitial = false;
+    _foodRewardedAd?.dispose();
+    _foodRewardedAd = null;
+    _isLoadingFoodRewarded = false;
 
     // Preload fresh ads for the new user
     _preloadRewarded();
     _preloadAppOpen();
-    preloadFoodInterstitial();
+    preloadFoodRewardedAd();
   }
 
   /// Call on sign-out to immediately clear all ad state.
@@ -109,9 +109,9 @@ class AdService {
     _rewardedRetryCount = 0;
     _appOpenRetryCount  = 0;
 
-    _foodInterstitialAd?.dispose();
-    _foodInterstitialAd = null;
-    _isLoadingFoodInterstitial = false;
+    _foodRewardedAd?.dispose();
+    _foodRewardedAd = null;
+    _isLoadingFoodRewarded = false;
   }
 
   // ── Daily Ad Count (Firestore, per-user) ───────────────────────────────────
@@ -385,39 +385,50 @@ class AdService {
     await ad.show();
   }
 
-  void preloadFoodInterstitial() {
-    if (_foodInterstitialAd != null || _isLoadingFoodInterstitial) return;
-    _isLoadingFoodInterstitial = true;
-    InterstitialAd.load(
-      adUnitId: _foodInterstitialId,
+  void preloadFoodRewardedAd() {
+    if (_foodRewardedAd != null || _isLoadingFoodRewarded) return;
+    _isLoadingFoodRewarded = true;
+    RewardedAd.load(
+      adUnitId: _foodRewardedAdUnitId,
       request: const AdRequest(),
-      adLoadCallback: InterstitialAdLoadCallback(
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
-          _foodInterstitialAd = ad;
-          _isLoadingFoodInterstitial = false;
+          _foodRewardedAd = ad;
+          _isLoadingFoodRewarded = false;
         },
         onAdFailedToLoad: (error) {
-          _foodInterstitialAd = null;
-          _isLoadingFoodInterstitial = false;
-          debugPrint('[AdService] Food interstitial failed: $error');
+          _foodRewardedAd = null;
+          _isLoadingFoodRewarded = false;
+          debugPrint('[AdService] Food rewarded ad failed: $error');
         },
       ),
     );
   }
 
   Future<void> showFoodScanAd({required VoidCallback onComplete}) async {
-    final ad = _foodInterstitialAd;
-    _foodInterstitialAd = null;
-    if (ad == null) {
+    final prefs = await SharedPreferences.getInstance();
+    final count = (prefs.getInt('foodScanAdCount') ?? 0) + 1;
+    await prefs.setInt('foodScanAdCount', count);
+
+    if (count <= 3) {
+      debugPrint('[AdService] Food scan count $count <= 3, skipping ad');
       onComplete();
-      preloadFoodInterstitial();
       return;
     }
+
+    final ad = _foodRewardedAd;
+    _foodRewardedAd = null;
+    if (ad == null) {
+      onComplete();
+      preloadFoodRewardedAd();
+      return;
+    }
+
     bool done = false;
     void finish() {
       if (!done) {
         done = true;
-        preloadFoodInterstitial();
+        preloadFoodRewardedAd();
         onComplete();
       }
     }
@@ -433,7 +444,11 @@ class AdService {
       },
       onAdShowedFullScreenContent: (_) => _incrementAdCount(),
     );
-    Timer(const Duration(seconds: 30), finish);
-    await ad.show();
+
+    Timer(const Duration(seconds: 45), finish);
+
+    await ad.show(onUserEarnedReward: (ad, reward) {
+      debugPrint('[AdService] User watched food scan rewarded ad');
+    });
   }
 }

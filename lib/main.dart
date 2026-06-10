@@ -528,24 +528,29 @@ class _FaceRatingPageState extends State<FaceRatingPage>
   late AnimationController _progressFadeCtrl;
   late AnimationController _progressStaggerCtrl;
   late Animation<double> _progressFadeAnim;
+  late AnimationController _scanLineCtrl;
 
   @override
   void initState() {
-  super.initState();
-  _billingService.addListener(_onBillingUpdated);
-  if (!_billingService.isInitialized) _billingService.initialize();
-  _refreshCooldown();
-  // Tick every second for the live countdown
-  _startTicker();
-  // Progress animations
-  _progressFadeCtrl = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 500));
-  _progressStaggerCtrl = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 2200));
-  _progressFadeAnim =
-      CurvedAnimation(parent: _progressFadeCtrl, curve: Curves.easeOut);
-  _loadHistory();
- }
+    super.initState();
+    _billingService.addListener(_onBillingUpdated);
+    if (!_billingService.isInitialized) _billingService.initialize();
+    _refreshCooldown();
+    // Tick every second for the live countdown
+    _startTicker();
+    // Progress animations
+    _progressFadeCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _progressStaggerCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 2200));
+    _progressFadeAnim =
+        CurvedAnimation(parent: _progressFadeCtrl, curve: Curves.easeOut);
+    _scanLineCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(reverse: true);
+    _loadHistory();
+  }
 
   void _startTicker() {
     Future.doWhile(() async {
@@ -584,6 +589,7 @@ class _FaceRatingPageState extends State<FaceRatingPage>
     _billingService.removeListener(_onBillingUpdated);
     _progressFadeCtrl.dispose();
     _progressStaggerCtrl.dispose();
+    _scanLineCtrl.dispose();
     super.dispose();
   }
 
@@ -878,115 +884,447 @@ class _FaceRatingPageState extends State<FaceRatingPage>
     );
   }
 
-  // ── Countdown bar widget ─────────────────────────────────────────────────
+  // ── Featured Holographic Scanner Card ────────────────────────────────────
 
-  Widget _buildCooldownBar() {
+  Widget _buildScannerCard() {
     final isPremium = _billingService.isPremium;
-    final barColor = const Color(0xFFFFD700);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(20),
+      width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF161616),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1.5),
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF1E1E24),
+            Color(0xFF121214),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.05),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 30,
+            offset: const Offset(0, 15),
           ),
+          if (_canScan)
+            BoxShadow(
+              color: const Color(0xFFFFD700).withValues(alpha: 0.05),
+              blurRadius: 40,
+              spreadRadius: 2,
+            ),
         ],
       ),
+      padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Badge row
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: barColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(Icons.timer_outlined, color: barColor, size: 20),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Next Scan Available In',
-                      style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500),
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _canScan ? const Color(0xFF39FF14) : const Color(0xFFFF9F0A),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: (_canScan ? const Color(0xFF39FF14) : const Color(0xFFFF9F0A))
+                              .withValues(alpha: 0.5),
+                          blurRadius: 8,
+                          spreadRadius: 2,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      ScanCooldownService.formatRemaining(_remaining),
-                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _canScan ? 'AI SCANNER ONLINE' : 'SCANNER DEHYDRATING',
+                    style: TextStyle(
+                      color: _canScan ? const Color(0xFF39FF14) : const Color(0xFFFF9F0A),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: barColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: barColor.withValues(alpha: 0.3)),
+                  color: isPremium ? const Color(0xFFFFD700).withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isPremium ? const Color(0xFFFFD700).withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.1),
+                    width: 1,
+                  ),
                 ),
-                child: Text(
-                  '${(_cooldownProgress * 100).toStringAsFixed(0)}%',
-                  style: TextStyle(color: barColor, fontSize: 12, fontWeight: FontWeight.w700),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isPremium ? Icons.workspace_premium_rounded : Icons.star_outline_rounded,
+                      color: isPremium ? const Color(0xFFFFD700) : Colors.white70,
+                      size: 12,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isPremium ? 'PREMIUM' : 'FREE TIER',
+                      style: TextStyle(
+                        color: isPremium ? const Color(0xFFFFD700) : Colors.white70,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
                 ),
-              )
+              ),
             ],
           ),
-          const SizedBox(height: 20),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: _cooldownProgress.clamp(0.0, 1.0),
-              minHeight: 8,
-              backgroundColor: const Color(0xFF222222),
-              valueColor: AlwaysStoppedAnimation(barColor),
-            ),
-          ),
-          if (!isPremium) ...[
-            const SizedBox(height: 20),
-            GestureDetector(
-              onTap: _showPremiumBottomSheet,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 12),
+          const SizedBox(height: 24),
+
+          // Viewfinder Camera box
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              // Scanner box outer border
+              Container(
+                width: 140,
+                height: 140,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFFFFD700).withValues(alpha: 0.15),
-                      const Color(0xFFFFD700).withValues(alpha: 0.05),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                  color: Colors.black.withValues(alpha: 0.3),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.03),
+                    width: 1.5,
                   ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.3)),
                 ),
-                child: const Row(
+              ),
+
+              // Corner brackets
+              SizedBox(
+                width: 120,
+                height: 120,
+                child: Stack(
+                  children: [
+                    // Top Left Corner
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            top: BorderSide(
+                                color: _canScan ? const Color(0xFFFFD700) : Colors.white24,
+                                width: 2.5),
+                            left: BorderSide(
+                                color: _canScan ? const Color(0xFFFFD700) : Colors.white24,
+                                width: 2.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Top Right Corner
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            top: BorderSide(
+                                color: _canScan ? const Color(0xFFFFD700) : Colors.white24,
+                                width: 2.5),
+                            right: BorderSide(
+                                color: _canScan ? const Color(0xFFFFD700) : Colors.white24,
+                                width: 2.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Bottom Left Corner
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                                color: _canScan ? const Color(0xFFFFD700) : Colors.white24,
+                                width: 2.5),
+                            left: BorderSide(
+                                color: _canScan ? const Color(0xFFFFD700) : Colors.white24,
+                                width: 2.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Bottom Right Corner
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                                color: _canScan ? const Color(0xFFFFD700) : Colors.white24,
+                                width: 2.5),
+                            right: BorderSide(
+                                color: _canScan ? const Color(0xFFFFD700) : Colors.white24,
+                                width: 2.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Center Icon
+              Icon(
+                Icons.face_retouching_natural_rounded,
+                size: 72,
+                color: _canScan
+                    ? const Color(0xFFFFD700)
+                    : Colors.white.withValues(alpha: 0.15),
+              ),
+
+              // Animated Scanning Line (only when scan is ready)
+              if (_canScan)
+                AnimatedBuilder(
+                  animation: _scanLineCtrl,
+                  builder: (context, child) {
+                    return Positioned(
+                      top: 25 + (_scanLineCtrl.value * 90),
+                      left: 25,
+                      right: 25,
+                      child: Container(
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFD700),
+                          borderRadius: BorderRadius.circular(2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFFD700).withValues(alpha: 0.6),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Cooldown progress / Scan button action
+          if (!_canScan) ...[
+            Text(
+              'Cooldown Active • Scan in ${ScanCooldownService.formatRemaining(_remaining)}',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: _cooldownProgress.clamp(0.0, 1.0),
+                minHeight: 6,
+                backgroundColor: const Color(0xFF222222),
+                valueColor: const AlwaysStoppedAnimation(Color(0xFFFFD700)),
+              ),
+            ),
+            if (!isPremium) ...[
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: _showPremiumBottomSheet,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFFFFD700).withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.workspace_premium_rounded,
+                          color: Color(0xFFFFD700), size: 16),
+                      SizedBox(width: 8),
+                      Text(
+                        'Unlock Instant Scans with Premium',
+                        style: TextStyle(
+                          color: Color(0xFFFFD700),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ] else ...[
+            Container(
+              width: double.infinity,
+              height: 56,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFFD700).withValues(alpha: 0.25),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: ElevatedButton(
+                onPressed: _cooldownLoaded
+                    ? () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const CameraScreen()),
+                        );
+                        await _refreshCooldown();
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFD700),
+                  foregroundColor: Colors.black,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                ),
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 18),
-                    SizedBox(width: 8),
+                    Icon(
+                      !isPremium ? Icons.play_circle_fill_rounded : Icons.camera_alt_rounded,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
                     Text(
-                      'Upgrade for ad-free scans',
-                      style: TextStyle(color: Color(0xFFFFD700), fontSize: 14, fontWeight: FontWeight.w600),
+                      !isPremium ? 'WATCH AD & SCAN' : 'START SCAN',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+            const Text(
+              'Stand in a well-lit room with your face centered.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white38,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ],
+      ),
+    );
+  }
+
+  // ── Quick Action Cards ───────────────────────────────────────────────────
+
+  Widget _buildQuickActionCard({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required List<Color> gradientColors,
+    required Color iconColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 120,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: gradientColors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: iconColor.withValues(alpha: 0.15),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Colors.white38,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -998,21 +1336,29 @@ class _FaceRatingPageState extends State<FaceRatingPage>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Face Rating', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+        title: const Text('Face Rating',
+            style: TextStyle(
+                color: Color(0xFFFFD700),
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5)),
         centerTitle: true,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 20),
             child: GestureDetector(
               onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilePage()));
+                Navigator.push(
+                    context, MaterialPageRoute(builder: (_) => const ProfilePage()));
               },
               child: Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.5), width: 2),
+                  border: Border.all(
+                      color: const Color(0xFFFFD700).withValues(alpha: 0.5), width: 2),
                   boxShadow: [
-                    BoxShadow(color: const Color(0xFFFFD700).withValues(alpha: 0.2), blurRadius: 10),
+                    BoxShadow(
+                        color: const Color(0xFFFFD700).withValues(alpha: 0.2),
+                        blurRadius: 10),
                   ],
                 ),
                 child: CircleAvatar(
@@ -1022,9 +1368,13 @@ class _FaceRatingPageState extends State<FaceRatingPage>
                       ? ClipOval(
                           child: CachedNetworkImage(
                             imageUrl: FirebaseAuth.instance.currentUser!.photoURL!,
-                            width: 32, height: 32, fit: BoxFit.cover,
-                            placeholder: (_, _) => const Icon(Icons.person, color: Colors.white54, size: 18),
-                            errorWidget: (_, _, _) => const Icon(Icons.person, color: Colors.white54, size: 18),
+                            width: 32,
+                            height: 32,
+                            fit: BoxFit.cover,
+                            placeholder: (_, _) =>
+                                const Icon(Icons.person, color: Colors.white54, size: 18),
+                            errorWidget: (_, _, _) =>
+                                const Icon(Icons.person, color: Colors.white54, size: 18),
                           ),
                         )
                       : const Icon(Icons.person, color: Colors.white54, size: 18),
@@ -1040,151 +1390,45 @@ class _FaceRatingPageState extends State<FaceRatingPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 32),
-              
-              // Premium Glowing Icon
-              Container(
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD700).withValues(alpha: 0.05),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.15), width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFFD700).withValues(alpha: 0.1),
-                      blurRadius: 50,
-                      spreadRadius: 10,
-                    ),
-                  ],
-                ),
-                child: const Icon(Icons.face_retouching_natural_rounded, color: Color(0xFFFFD700), size: 90),
-              ),
-              
-              const SizedBox(height: 32),
-              
-              const Text('Scan Your Face',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1.0)),
-              const SizedBox(height: 8),
-              
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF161616),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _billingService.isPremium ? Icons.workspace_premium : Icons.stars_rounded,
-                      color: _billingService.isPremium ? const Color(0xFFFFD700) : Colors.white54,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _billingService.isPremium ? 'Premium: 1 scan every 24 hours' : 'Free: 1 scan every 24 hours',
-                      style: TextStyle(
-                        color: _billingService.isPremium ? const Color(0xFFFFD700) : Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+              const SizedBox(height: 24),
+              _buildScannerCard(),
+              const SizedBox(height: 20),
+
+              // Side-by-side Action grid
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildQuickActionCard(
+                      icon: Icons.psychology_rounded,
+                      label: 'Ask Coach',
+                      subtitle: 'AI Looks Advisor',
+                      gradientColors: [const Color(0xFF2E1A47), const Color(0xFF140D24)],
+                      iconColor: const Color(0xFFB58EFF),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AskCoachPage()),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              
-              const SizedBox(height: 48),
-              
-              // CTA Button Area
-              if (!_canScan) _buildCooldownBar(),
-              
-              if (_canScan) ...[
-                 Container(
-                  width: double.infinity,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(32),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFFD700).withValues(alpha: 0.3),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildQuickActionCard(
+                      icon: Icons.lightbulb_outline_rounded,
+                      label: 'Scan Guide',
+                      subtitle: 'Accurate Results',
+                      gradientColors: [const Color(0xFF0F2C3D), const Color(0xFF06151E)],
+                      iconColor: const Color(0xFF4FC3F7),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HowToScanPage()),
                       ),
-                    ],
-                  ),
-                  child: ElevatedButton(
-                    onPressed: _cooldownLoaded ? () async {
-                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
-                      await _refreshCooldown();
-                    } : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD700),
-                      foregroundColor: Colors.black,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (!_billingService.isPremium) ...[
-                          const Icon(Icons.play_circle_filled_rounded, size: 22),
-                          const SizedBox(width: 10),
-                          const Text(
-                            'WATCH AD & SCAN',
-                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5),
-                          ),
-                        ] else ...[
-                          const Text(
-                            'START SCAN',
-                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5),
-                          ),
-                        ],
-                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  _billingService.isPremium
-                      ? 'Your scan is ready! Tap above to analyse your face.'
-                      : 'Watch a short ad to unlock your face scan.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w500),
-                ),
-              ],
-              
-              const SizedBox(height: 32),
-              
-              // ── Action Bars ─────────────────────────────────────────
-              _buildActionBar(
-                icon: Icons.psychology_rounded,
-                label: 'Ask Coach',
-                subtitle: 'Your personal looks advisor',
-                iconColor: const Color(0xFF9C6FFF),
-                borderColor: const Color(0xFF9C6FFF),
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const AskCoachPage())),
+                ],
               ),
 
-              const SizedBox(height: 12),
-
-              _buildActionBar(
-                icon: Icons.info_outline_rounded,
-                label: 'How to Use Scan',
-                subtitle: 'Tips for accurate results',
-                iconColor: const Color(0xFF4FC3F7),
-                borderColor: const Color(0xFF4FC3F7),
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const HowToScanPage())),
-              ),
-
-              // ── Progress Section (merged from ProgressPage) ──────────
-              const SizedBox(height: 32),
+              // Progress Section
+              const SizedBox(height: 28),
               _buildProgressSection(),
 
               const SizedBox(height: 120),
@@ -1207,7 +1451,8 @@ class _FaceRatingPageState extends State<FaceRatingPage>
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.4), width: 1.5),
+                    border: Border.all(
+                        color: const Color(0xFFFFD700).withValues(alpha: 0.4), width: 1.5),
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0xFFFFD700).withValues(alpha: 0.15),
@@ -1234,9 +1479,17 @@ class _FaceRatingPageState extends State<FaceRatingPage>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text('Upgrade to Premium', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w800, fontSize: 16)),
+                            Text('Upgrade to Premium',
+                                style: TextStyle(
+                                    color: Color(0xFFFFD700),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16)),
                             SizedBox(height: 2),
-                            Text('Ad-free scans & detailed insights', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+                            Text('Ad-free scans & detailed insights',
+                                style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
@@ -1250,77 +1503,6 @@ class _FaceRatingPageState extends State<FaceRatingPage>
     );
   }
 
-  Widget _buildActionBar({
-    required IconData icon,
-    required String label,
-    required String subtitle,
-    required Color iconColor,
-    required Color borderColor,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFF161616),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: iconColor.withValues(alpha: 0.2)),
-              ),
-              child: Icon(icon, color: iconColor, size: 26),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.3)),
-                  const SizedBox(height: 4),
-                  Text(subtitle,
-                      style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500)),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withValues(alpha: 0.6), size: 14),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ── Progress Section Builder ───────────────────────────────────────────
 
   Widget _buildProgressSection() {
@@ -1328,11 +1510,39 @@ class _FaceRatingPageState extends State<FaceRatingPage>
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 32),
         child: Center(
-            child: CircularProgressIndicator(color: Color(0xFFFFD700))),
+          child: CircularProgressIndicator(color: Color(0xFFFFD700)),
+        ),
       );
     }
     if (_history.isEmpty) {
-      return _buildEmptyProgress();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Your Analytics',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildEmptyProgress(),
+        ],
+      );
     }
     return FadeTransition(
       opacity: _progressFadeAnim,
@@ -1343,26 +1553,37 @@ class _FaceRatingPageState extends State<FaceRatingPage>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(children: [
-                Container(
-                    width: 3,
+              Row(
+                children: [
+                  Container(
+                    width: 4,
                     height: 16,
                     decoration: BoxDecoration(
-                        color: const Color(0xFFFFD700),
-                        borderRadius: BorderRadius.circular(2))),
-                const SizedBox(width: 8),
-                const Text('Your Progress',
+                      color: const Color(0xFFFFD700),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Your Progress',
                     style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold)),
-              ]),
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
               GestureDetector(
                 onTap: _refreshProgress,
                 child: Container(
                   padding: const EdgeInsets.all(8),
-                  child: const Icon(Icons.refresh,
-                      color: Colors.white38, size: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.03),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.refresh_rounded,
+                      color: Colors.white54, size: 16),
                 ),
               ),
             ],
@@ -1371,29 +1592,35 @@ class _FaceRatingPageState extends State<FaceRatingPage>
 
           // Stats Banner
           SlideTransition(
-              position: _staggerSlide(0),
-              child: FadeTransition(
-                  opacity: _staggerOpacity(0),
-                  child: _buildStatsBanner())),
+            position: _staggerSlide(0),
+            child: FadeTransition(
+              opacity: _staggerOpacity(0),
+              child: _buildStatsBanner(),
+            ),
+          ),
           const SizedBox(height: 16),
 
           // Trend Chart
           if (_history.length >= 2) ...[
             SlideTransition(
-                position: _staggerSlide(1),
-                child: FadeTransition(
-                    opacity: _staggerOpacity(1),
-                    child: _buildTrendChart())),
+              position: _staggerSlide(1),
+              child: FadeTransition(
+                opacity: _staggerOpacity(1),
+                child: _buildTrendChart(),
+              ),
+            ),
             const SizedBox(height: 16),
           ],
 
           // Best Breakdown
           SlideTransition(
-              position: _staggerSlide(2),
-              child: FadeTransition(
-                  opacity: _staggerOpacity(2),
-                  child: _buildBestBreakdown())),
-          const SizedBox(height: 20),
+            position: _staggerSlide(2),
+            child: FadeTransition(
+              opacity: _staggerOpacity(2),
+              child: _buildBestBreakdown(),
+            ),
+          ),
+          const SizedBox(height: 24),
 
           // Scan History Header
           SlideTransition(
@@ -1403,24 +1630,35 @@ class _FaceRatingPageState extends State<FaceRatingPage>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(children: [
-                    Container(
-                        width: 3,
+                  Row(
+                    children: [
+                      Container(
+                        width: 4,
                         height: 16,
                         decoration: BoxDecoration(
-                            color: const Color(0xFFFFD700),
-                            borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(width: 8),
-                    const Text('Scan History',
+                          color: const Color(0xFFFFD700),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Scan History',
                         style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold)),
-                  ]),
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                   Text(
-                      '${_history.length} scan${_history.length == 1 ? '' : 's'}',
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 12)),
+                    '${_history.length} scan${_history.length == 1 ? '' : 's'} total',
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1445,209 +1683,280 @@ class _FaceRatingPageState extends State<FaceRatingPage>
 
   Widget _buildEmptyProgress() {
     return Center(
-      child: Column(
-        children: [
-          const SizedBox(height: 16),
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: const Color(0xFF111111),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white10),
-            ),
-            child: const Icon(Icons.bar_chart,
-                color: Colors.white24, size: 40),
-          ),
-          const SizedBox(height: 20),
-          const Text('No scans yet',
-              style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text(
-              'Complete a face scan above\nto start tracking your progress.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white24, fontSize: 13)),
-        ],
-      ),
-    );
-  }
-
-  // ── Stats Banner ──────────────────────────────────────────────────────────
-  Widget _buildStatsBanner() {
-    final imp = _improvement;
-    final latestColor = _getScoreColor(_latestScore);
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111111),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: const Color(0xFFFFD700).withValues(alpha:0.2),
-            width: 1.5),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    width: 76,
-                    height: 76,
-                    child: _ProgressAnimatedCircularBar(
-                        value: _latestScore / 100,
-                        color: latestColor,
-                        delay: 300),
-                  ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('$_latestScore',
-                          style: TextStyle(
-                              color: latestColor,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              height: 1)),
-                      Text(_getScoreLabel(_latestScore),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Colors.white38, fontSize: 7)),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('LATEST SCORE',
-                        style: TextStyle(
-                            color: Colors.white38,
-                            fontSize: 10,
-                            letterSpacing: 1.2,
-                            fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                      _statPill('🏆', '$_bestScore', 'Best',
-                          const Color(0xFFFFD700)),
-                      const SizedBox(width: 8),
-                      _statPill('📊', _avgScore.toStringAsFixed(1),
-                          'Avg', const Color(0xFF7B68EE)),
-                      const SizedBox(width: 8),
-                      _statPill('📋', '${_history.length}', 'Scans',
-                          const Color(0xFF29B6F6)),
-                    ]),
-                    if (_history.length >= 2) ...[
-                      const SizedBox(height: 10),
-                      Row(children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: (imp >= 0
-                                    ? const Color(0xFF8BC34A)
-                                    : Colors.redAccent)
-                                .withValues(alpha:0.12),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                                color: (imp >= 0
-                                        ? const Color(0xFF8BC34A)
-                                        : Colors.redAccent)
-                                    .withValues(alpha:0.35)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                  imp >= 0
-                                      ? Icons.trending_up
-                                      : Icons.trending_down,
-                                  color: imp >= 0
-                                      ? const Color(0xFF8BC34A)
-                                      : Colors.redAccent,
-                                  size: 13),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${imp >= 0 ? '+' : ''}$imp from first scan',
-                                style: TextStyle(
-                                    color: imp >= 0
-                                        ? const Color(0xFF8BC34A)
-                                        : Colors.redAccent,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ]),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Tier Progress',
-                        style: TextStyle(
-                            color: Colors.white38, fontSize: 11)),
-                    Text(_getNextTier(_latestScore),
-                        style: TextStyle(
-                            color: latestColor, fontSize: 11)),
-                  ]),
-              const SizedBox(height: 7),
-              _ProgressAnimatedBar(
-                  value: _tierProgress(_latestScore),
-                  color: latestColor,
-                  delay: 400),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _statPill(
-      String emoji, String value, String label, Color color) {
-    return Expanded(
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: color.withValues(alpha:0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha:0.2)),
+          color: const Color(0xFF161616),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
         ),
         child: Column(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 13)),
-            const SizedBox(height: 2),
-            Text(value,
-                style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13)),
-            Text(label,
-                style: const TextStyle(
-                    color: Colors.white38, fontSize: 9)),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.02),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.bar_chart_rounded,
+                  color: Colors.white24, size: 32),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No scans tracked yet',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Complete a face scan above to see your analytics and track progress.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white38, fontSize: 12, height: 1.4),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ── Trend Chart ───────────────────────────────────────────────────────────
+  // ── Stats Banner Redesign ────────────────────────────────────────────────
+
+  Widget _buildStatsBanner() {
+    final imp = _improvement;
+    final latestColor = _getScoreColor(_latestScore);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            // Column 1: Latest Score Gauge Card
+            Expanded(
+              flex: 4,
+              child: Container(
+                height: 140,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161616),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                ),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 68,
+                          height: 68,
+                          child: _ProgressAnimatedCircularBar(
+                            value: _latestScore / 100,
+                            color: latestColor,
+                            delay: 300,
+                          ),
+                        ),
+                        Text(
+                          '$_latestScore',
+                          style: TextStyle(
+                            color: latestColor,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _getScoreLabel(_latestScore).toUpperCase(),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: latestColor.withValues(alpha: 0.8),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Column 2: Best & Avg Stats Cards
+            Expanded(
+              flex: 5,
+              child: Container(
+                height: 140,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161616),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                ),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Best Score Row
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFD700).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.emoji_events_rounded,
+                              color: Color(0xFFFFD700), size: 16),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'PERSONAL BEST',
+                                style: TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w700),
+                              ),
+                              Text(
+                                '$_bestScore',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Average Score Row
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFB58EFF).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.analytics_rounded,
+                              color: Color(0xFFB58EFF), size: 16),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'AVERAGE SCORE',
+                                style: TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w700),
+                              ),
+                              Text(
+                                _avgScore.toStringAsFixed(1),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Lower Section: Tier Progress card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161616),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Tier Progress',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    _getNextTier(_latestScore),
+                    style: TextStyle(
+                      color: latestColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _ProgressAnimatedBar(
+                value: _tierProgress(_latestScore),
+                color: latestColor,
+                delay: 400,
+                height: 6,
+              ),
+              if (_history.length >= 2) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(
+                      imp >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                      color: imp >= 0 ? const Color(0xFF39FF14) : const Color(0xFFFF453A),
+                      size: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      imp >= 0
+                          ? 'You improved by +$imp points since first scan'
+                          : 'Score decreased by $imp points since first scan',
+                      style: TextStyle(
+                        color: imp >= 0 ? const Color(0xFF39FF14) : const Color(0xFFFF453A),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Score Trend Chart ────────────────────────────────────────────────────
+
   Widget _buildTrendChart() {
     final data = _history.reversed.take(10).toList();
     final scores =
@@ -1657,92 +1966,123 @@ class _FaceRatingPageState extends State<FaceRatingPage>
     final range = (maxScore - minScore).clamp(10, 100);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF111111),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha:0.06)),
+        color: const Color(0xFF161616),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Container(
-                width: 3,
-                height: 14,
-                decoration: BoxDecoration(
-                    color: const Color(0xFFFFD700),
-                    borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 8),
-            const Text('Score Trend',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold)),
-            const Spacer(),
-            Text('${data.length} scans',
-                style: const TextStyle(
-                    color: Colors.white24, fontSize: 11)),
-          ]),
-          const SizedBox(height: 18),
-          SizedBox(
-            height: 150,
-            child: ClipRect(
-             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: data.asMap().entries.map((e) {
-                final score = e.value.scores['overall'] as int? ?? 0;
-                final barHeight =
-                    ((score - minScore + 5) / (range + 5)) * 96 + 12;
-                final isLatest = e.key == data.length - 1;
-                final color = _getScoreColor(score);
-                return Expanded(
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 3),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isLatest)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 3),
-                            child: Text('$score',
-                                style: TextStyle(
-                                    color: color,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                        _ProgressAnimatedBar(
-                          value: 1.0,
-                          color: color,
-                          heightOverride: barHeight,
-                          borderRadius: 6,
-                          delay: 200 + e.key * 55,
-                        ),
-                        const SizedBox(height: 5),
-                        Text('${e.key + 1}',
-                            style: const TextStyle(
-                                color: Colors.white24,
-                                fontSize: 9)),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-           ),
-          ),
-          const SizedBox(height: 10),
           Row(
+            children: [
+              Container(
+                width: 4,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Score Trend',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'Last ${data.length} scans',
+                style: const TextStyle(
+                  color: Colors.white38,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 130,
+            child: ClipRect(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: data.asMap().entries.map((e) {
+                  final score = e.value.scores['overall'] as int? ?? 0;
+                  final barHeight =
+                      ((score - minScore + 5) / (range + 5)) * 80 + 15;
+                  final isLatest = e.key == data.length - 1;
+                  final color = _getScoreColor(score);
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isLatest)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '$score',
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          _ProgressAnimatedBar(
+                            value: 1.0,
+                            color: color,
+                            heightOverride: barHeight,
+                            borderRadius: 4,
+                            delay: 200 + e.key * 50,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${e.key + 1}',
+                            style: const TextStyle(
+                              color: Colors.white24,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('← Oldest',
-                  style: TextStyle(
-                      color: Colors.white24, fontSize: 10)),
-              const Text('Newest →',
-                  style: TextStyle(
-                      color: Colors.white24, fontSize: 10)),
+              Text(
+                '← OLDEST',
+                style: TextStyle(
+                  color: Colors.white24,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              Text(
+                'NEWEST →',
+                style: TextStyle(
+                  color: Colors.white24,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
             ],
           ),
         ],
@@ -1750,7 +2090,8 @@ class _FaceRatingPageState extends State<FaceRatingPage>
     );
   }
 
-  // ── Best Scan Breakdown ────────────────────────────────────────────────────
+  // ── Best Scan Breakdown Redesign ─────────────────────────────────────────
+
   Widget _buildBestBreakdown() {
     final best = _history.reduce((a, b) =>
         (a.scores['overall'] as int? ?? 0) >
@@ -1760,82 +2101,116 @@ class _FaceRatingPageState extends State<FaceRatingPage>
     final sc = best.scores;
 
     final categories = [
-      ('Skin', '✨', sc['skin'] as int? ?? 0),
+      ('Skin Quality', '✨', sc['skin'] as int? ?? 0),
       ('Cheekbones', '🦴', sc['cheekbones'] as int? ?? 0),
-      ('Jawline', '💎', sc['jawline'] as int? ?? 0),
-      ('Eyes', '👁️', sc['eyes'] as int? ?? 0),
-      ('Symmetry', '⚖️', sc['symmetry'] as int? ?? 0),
-      ('Neck', '📐', sc['neck'] as int? ?? 0),
+      ('Jawline Definition', '💎', sc['jawline'] as int? ?? 0),
+      ('Eye Alignment', '👁️', sc['eyes'] as int? ?? 0),
+      ('Face Symmetry', '⚖️', sc['symmetry'] as int? ?? 0),
+      ('Neck & Chin', '📐', sc['neck'] as int? ?? 0),
     ];
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF111111),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha:0.06)),
+        color: const Color(0xFF161616),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Container(
-                width: 3,
-                height: 14,
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 16,
                 decoration: BoxDecoration(
-                    color: const Color(0xFFFFD700),
-                    borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 8),
-            const Text('Best Scan Breakdown',
+                  color: const Color(0xFFFFD700),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Best Scan Breakdown',
                 style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold)),
-            const Spacer(),
-            Text(_progressFormatDate(best.date),
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _progressFormatDate(best.date),
                 style: const TextStyle(
-                    color: Colors.white24, fontSize: 10)),
-          ]),
-          const SizedBox(height: 16),
+                  color: Colors.white38,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
           ...categories.asMap().entries.map((e) {
             final name = e.value.$1;
             final emoji = e.value.$2;
             final score = e.value.$3;
             final color = _getScoreColor(score);
             return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(children: [
-                Text(emoji,
-                    style: const TextStyle(fontSize: 15)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(name,
-                                style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 13)),
-                            Text('$score',
-                                style: TextStyle(
-                                    color: color,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13)),
-                          ]),
-                      const SizedBox(height: 5),
-                      _ProgressAnimatedBar(
+                            Text(
+                              name,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              '$score/100',
+                              style: TextStyle(
+                                color: color,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        _ProgressAnimatedBar(
                           value: score / 100,
                           color: color,
                           delay: 400 + e.key * 60,
-                          height: 5),
-                    ],
+                          height: 5,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             );
           }),
         ],
@@ -1843,7 +2218,8 @@ class _FaceRatingPageState extends State<FaceRatingPage>
     );
   }
 
-  // ── Scan Card ─────────────────────────────────────────────────────────────
+  // ── Scan Cards Redesign ──────────────────────────────────────────────────
+
   Widget _buildScanCard(ScanHistory scan, int index) {
     final overall = scan.scores['overall'] as int? ?? 0;
     final isLatest = index == 0;
@@ -1855,140 +2231,207 @@ class _FaceRatingPageState extends State<FaceRatingPage>
 
     return GestureDetector(
       onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) => ScanDetailScreen(scan: scan))),
+        context,
+        MaterialPageRoute(
+          builder: (_) => ScanDetailScreen(scan: scan),
+        ),
+      ),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isLatest
-              ? const Color(0xFF141200)
-              : const Color(0xFF111111),
-          borderRadius: BorderRadius.circular(18),
+          color: isLatest ? const Color(0xFF1A1916) : const Color(0xFF161616),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isLatest
-                ? const Color(0xFFFFD700).withValues(alpha:0.3)
-                : Colors.white.withValues(alpha:0.06),
+                ? const Color(0xFFFFD700).withValues(alpha: 0.2)
+                : Colors.white.withValues(alpha: 0.05),
+            width: 1.5,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: scan.imagePath != null &&
-                      scan.imagePath!.startsWith('http')
-                  ? CachedNetworkImage(
-                      imageUrl: scan.imagePath!,
-                      width: 56, height: 56, fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                          width: 56, height: 56,
+            // Face image thumbnail
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isLatest
+                      ? const Color(0xFFFFD700).withValues(alpha: 0.3)
+                      : Colors.white.withValues(alpha: 0.05),
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(13),
+                child: scan.imagePath != null && scan.imagePath!.startsWith('http')
+                    ? CachedNetworkImage(
+                        imageUrl: scan.imagePath!,
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
                           color: const Color(0xFF1E1E1E),
                           child: const Center(
-                              child: SizedBox(
-                                  width: 20, height: 20,
-                                  child: CircularProgressIndicator(
-                                      color: Color(0xFFFFD700),
-                                      strokeWidth: 2)))),
-                      errorWidget: (context, url, error) => Container(
-                          width: 56, height: 56,
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Color(0xFFFFD700),
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
                           color: const Color(0xFF1E1E1E),
-                          child: const Icon(Icons.face,
-                              color: Colors.white24, size: 26)),
-                    )
-                  : Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
+                          child: const Icon(Icons.face_rounded,
+                              color: Colors.white24, size: 28),
+                        ),
+                      )
+                    : Container(
                         color: const Color(0xFF1E1E1E),
-                        borderRadius: BorderRadius.circular(12),
+                        child: const Icon(Icons.face_rounded,
+                            color: Colors.white24, size: 28),
                       ),
-                      child: const Icon(Icons.face,
-                          color: Colors.white24, size: 26)),
+              ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
+
+            // Scan Details
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Text(_progressFormatDate(scan.date),
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 11)),
-                    if (isLatest) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFD700),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text('LATEST',
-                            style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ]),
-                  const SizedBox(height: 7),
                   Row(
                     children: [
-                      Text('$overall',
-                          style: TextStyle(
-                              color: color,
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold)),
-                      Text('/100',
-                          style: const TextStyle(
-                              color: Colors.white24, fontSize: 12)),
-                      const SizedBox(width: 8),
-                      Text(_getScoreLabel(overall),
-                          style: TextStyle(
-                              color: color.withValues(alpha:0.8),
-                              fontSize: 12)),
-                      const Spacer(),
-                      if (diff != null)
+                      Text(
+                        _progressFormatDate(scan.date),
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (isLatest) ...[
+                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: (diff >= 0
-                                    ? const Color(0xFF8BC34A)
-                                    : Colors.redAccent)
-                                .withValues(alpha:0.12),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: (diff >= 0
-                                        ? const Color(0xFF8BC34A)
-                                        : Colors.redAccent)
-                                    .withValues(alpha:0.35)),
+                            color: const Color(0xFFFFD700),
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(
-                            '${diff >= 0 ? '+' : ''}$diff',
+                          child: const Text(
+                            'LATEST',
                             style: TextStyle(
-                                color: diff >= 0
-                                    ? const Color(0xFF8BC34A)
-                                    : Colors.redAccent,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold),
+                              color: Colors.black,
+                              fontSize: 8,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(
+                        '$overall',
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const Text(
+                        '/100',
+                        style: TextStyle(
+                          color: Colors.white24,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _getScoreLabel(overall),
+                        style: TextStyle(
+                          color: color.withValues(alpha: 0.8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   _ProgressAnimatedBar(
-                      value: overall / 100,
-                      color: color,
-                      delay: 100 + index * 50,
-                      height: 4),
+                    value: overall / 100,
+                    color: color,
+                    delay: 100 + index * 50,
+                    height: 4,
+                  ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right,
-                color: Colors.white24, size: 18),
+            const SizedBox(width: 12),
+
+            // Chevron or score difference
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (diff != null && diff != 0) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (diff >= 0
+                              ? const Color(0xFF39FF14)
+                              : const Color(0xFFFF453A))
+                          .withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: (diff >= 0
+                                ? const Color(0xFF39FF14)
+                                : const Color(0xFFFF453A))
+                            .withValues(alpha: 0.25),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      '${diff >= 0 ? '+' : ''}$diff',
+                      style: TextStyle(
+                        color: diff >= 0
+                            ? const Color(0xFF39FF14)
+                            : const Color(0xFFFF453A),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.03),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.chevron_right_rounded,
+                      color: Colors.white30, size: 16),
+                ),
+              ],
+            ),
           ],
         ),
       ),

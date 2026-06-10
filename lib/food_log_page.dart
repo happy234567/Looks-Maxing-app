@@ -17,6 +17,7 @@ import 'nutrition_db_helper.dart';
 import 'billing_service.dart';
 import 'ad_service.dart';
 import 'scan_tutorial_screen.dart';
+import 'food_detail_screen.dart';
 
 class DietPlan {
   final int calories, protein, carbs, fats, fiber;
@@ -211,14 +212,6 @@ Widget _stepBar(double v) => TweenAnimationBuilder<double>(
   ),
 );
 
-BoxDecoration _cardDeco({bool selected = false}) => BoxDecoration(
-  color: selected ? _gold.withValues(alpha: 0.08) : _card,
-  borderRadius: BorderRadius.circular(24.0),
-  border: Border.all(
-    color: selected ? _gold : Colors.white.withValues(alpha: 0.06),
-    width: selected ? 2 : 1,
-  ),
-);
 
 AppBar _stepAppBar(BuildContext ctx, String title) => AppBar(
   backgroundColor: Colors.transparent,
@@ -251,6 +244,9 @@ class _FoodLogPageState extends State<FoodLogPage>
   List<Map<String, dynamic>> _logEntries = [];
   late AnimationController _pulseCtrl;
   DateTime _selectedDate = DateTime.now();
+  Map<String, Map<String, dynamic>> _last7DaysData = {};
+  int _streakDays = 0;
+  int _goalsMetCount = 0;
 
   @override
   void initState() {
@@ -288,6 +284,7 @@ class _FoodLogPageState extends State<FoodLogPage>
       }
     }
     await _loadFoods();
+    await _loadLast7DaysStats();
   }
 
   void _setLocal(SharedPreferences p) {
@@ -591,7 +588,13 @@ class _FoodLogPageState extends State<FoodLogPage>
     );
   }
 
-  Widget _nutritionCard(String label, int current, int target, Color c, IconData icon) {
+  Widget _nutritionCard(
+    String label,
+    int current,
+    int target,
+    Color c,
+    IconData icon,
+  ) {
     double pct = target > 0 ? current / target : 0.0;
     return Container(
       padding: const EdgeInsets.all(16),
@@ -607,7 +610,11 @@ class _FoodLogPageState extends State<FoodLogPage>
             children: [
               Text(
                 label,
-                style: TextStyle(color: c, fontSize: 13, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: c,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               Container(
                 padding: const EdgeInsets.all(4),
@@ -647,534 +654,1151 @@ class _FoodLogPageState extends State<FoodLogPage>
     final entries = _logEntries
         .where((e) => e['mealType'] == mealType)
         .toList();
+    
     int mealKcal = 0;
+    double mealPro = 0;
+    double mealCarb = 0;
+    double mealFat = 0;
+    double mealFib = 0;
+
     for (final e in entries) {
       mealKcal += (e['totalCalories'] as num?)?.toInt() ?? 0;
+      mealPro += (e['totalProtein'] as num?)?.toDouble() ?? 0.0;
+      mealCarb += (e['totalCarbs'] as num?)?.toDouble() ?? 0.0;
+      mealFat += (e['totalFats'] as num?)?.toDouble() ?? 0.0;
+      mealFib += (e['totalFiber'] as num?)?.toDouble() ?? 0.0;
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        onTap: entries.isEmpty ? () => _startFoodScan(mealType) : null,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: _card,
-            borderRadius: BorderRadius.circular(24.0),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(emoji, style: const TextStyle(fontSize: 22)),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          label,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          entries.isEmpty
-                              ? 'Tap to add'
-                              : '$mealKcal kcal  ·  ${entries.length} item${entries.length > 1 ? 's' : ''}',
-                          style: TextStyle(
-                            color: entries.isEmpty ? Colors.white30 : _gold,
-                            fontSize: 13,
-                            fontWeight: entries.isEmpty
-                                ? FontWeight.w400
-                                : FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    entries.isEmpty
-                        ? Icons.add_circle_outline_rounded
-                        : Icons.chevron_right_rounded,
-                    color: entries.isEmpty ? Colors.white24 : Colors.white38,
-                    size: 22,
-                  ),
-                ],
-              ),
-              if (entries.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                const Divider(color: Colors.white10, height: 1),
-                const SizedBox(height: 8),
-                ...entries.map((entry) {
-                  final indexInMain = _logEntries.indexOf(entry);
-                  final List<dynamic> foods = entry['foods'] as List? ?? [];
-                  final localImagePath = entry['imagePath'] as String?;
-
-                  return Dismissible(
-                    key: ValueKey('entry_${entry['timestamp']}'),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 20),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.delete_rounded,
-                        color: Colors.redAccent,
-                        size: 20,
-                      ),
-                    ),
-                    onDismissed: (_) => _deleteEntry(indexInMain),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ...foods.map((f) {
-                            final name = f['name'] as String? ?? 'Food';
-                            final cal = f['cal'] as num? ?? 0;
-                            final grams = (f['grams'] as num?)?.round() ?? 100;
-                            final isEst = f['isEstimate'] == true;
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 3),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    "$name (${isEst ? '~' : ''}${grams}g)",
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  Text(
-                                    "${cal.round()} kcal",
-                                    style: const TextStyle(
-                                      color: Colors.white38,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }),
-                          if (localImagePath != null &&
-                              localImagePath.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.file(
-                                File(localImagePath),
-                                height: 50,
-                                width: 80,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const SizedBox.shrink(),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _planView() {
-    final double calPct = _cal > 0 ? (_tCal / _cal).clamp(0.0, 1.0) : 0.0;
-    return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            floating: true,
-            title: const Text(
-              'Food Log',
-              style: TextStyle(
-                color: _gold,
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
+    if (entries.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: GestureDetector(
+          onTap: () => _startFoodScan(mealType),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.01),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+                width: 1.5,
               ),
             ),
-            actions: [
-              IconButton(
-                icon: const CircleAvatar(
-                  radius: 16,
-                  backgroundColor: _card,
-                  child: Icon(Icons.help_outline_rounded, color: _gold, size: 18),
-                ),
-                tooltip: 'Scan Tips',
-                onPressed: () => Navigator.push(context, _slideRoute(const ScanTutorialScreen())),
-              ),
-              IconButton(
-                icon: const CircleAvatar(
-                  radius: 16,
-                  backgroundColor: _card,
-                  child: Icon(Icons.autorenew_rounded, color: _gold, size: 18),
-                ),
-                tooltip: 'Regenerate',
-                onPressed: () async {
-                   await Navigator.push(context, _slideRoute(const _ConfirmProfileScreen()));
-                   _refreshAll();
-                },
-              ),
-              IconButton(
-                icon: const CircleAvatar(
-                  radius: 16,
-                  backgroundColor: _card,
-                  child: Icon(Icons.person, color: _gold, size: 18),
-                ),
-                onPressed: () => Navigator.push(context, _slideRoute(const ProfilePage())),
-              ),
-            ],
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // ── Calorie Intake Card ──
-                const SizedBox(height: 8),
+            child: Row(
+              children: [
                 Container(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
-                    color: _card,
-                    borderRadius: BorderRadius.circular(24.0),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                    color: Colors.white.withValues(alpha: 0.03),
+                    shape: BoxShape.circle,
                   ),
+                  alignment: Alignment.center,
+                  child: Text(emoji, style: const TextStyle(fontSize: 18)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Calorie Intake",
-                                style: TextStyle(
-                                  color: Colors.white60,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TweenAnimationBuilder<int>(
-                                tween: IntTween(begin: 0, end: _tCal),
-                                duration: const Duration(milliseconds: 600),
-                                curve: Curves.easeOutCubic,
-                                builder: (context, val, _) => Text(
-                                  '$val',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 48,
-                                    height: 1.0,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'of $_cal kcal',
-                                style: const TextStyle(
-                                  color: Colors.white38,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Column(
-                            children: [
-                              SizedBox(
-                                width: 70,
-                                height: 70,
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    CircularProgressIndicator(
-                                      value: calPct,
-                                      strokeWidth: 8,
-                                      backgroundColor: Colors.white.withValues(alpha: 0.05),
-                                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.white24),
-                                    ),
-                                    Center(
-                                      child: Text(
-                                        '${(calPct * 100).toInt()}%',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                "Daily Goal",
-                                style: TextStyle(
-                                  color: Colors.white38,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
                       ),
-                      const SizedBox(height: 24),
-                      Divider(color: Colors.white.withValues(alpha: 0.05), height: 1),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _simpleMacro('Protein', _tPro, const Color(0xFF5B9BF5)),
-                          _simpleMacro('Carbs', _tCarb, const Color(0xFFF5A623)),
-                          _simpleMacro('Fats', _tFat, const Color(0xFF50E3C2)),
-                          _simpleMacro('Fiber', _tFib, const Color(0xFF7ED321)),
-                        ],
+                      const SizedBox(height: 2),
+                      const Text(
+                        'No food logged yet',
+                        style: TextStyle(
+                          color: Colors.white30,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                
-                // ── Log Food Manually ──
-                SizedBox(
-                  height: 48,
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final r = await showModalBottomSheet<bool>(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: const Color(0xFF1A1A1A),
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                        ),
-                        builder: (_) => const _AddFoodSheet(),
-                      );
-                      if (r == true) _loadFoods();
-                    },
-                    icon: const Icon(Icons.playlist_add_rounded, color: _gold, size: 20),
-                    label: const Text(
-                      'Log Food Manually',
-                      style: TextStyle(color: _gold, fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: _gold.withValues(alpha: 0.4)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                    ),
-                  ),
+                const Icon(
+                  Icons.add_circle_outline_rounded,
+                  color: _gold,
+                  size: 22,
                 ),
-                const SizedBox(height: 24),
-                
-                // ── Nutrition Summary ──
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(24.0),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Meal Header
+            Row(
+              children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: _card,
-                    borderRadius: BorderRadius.circular(24.0),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                  alignment: Alignment.center,
+                  child: Text(emoji, style: const TextStyle(fontSize: 22)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            "Nutrition Summary",
-                            style: TextStyle(
+                          Text(
+                            label,
+                            style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
                           ),
-                          Row(
-                            children: [
-                              IconButton(
-                                constraints: const BoxConstraints(),
-                                padding: EdgeInsets.zero,
-                                icon: const Icon(Icons.chevron_left, color: Colors.white60, size: 20),
-                                onPressed: () {
-                                  setState(() => _selectedDate = _selectedDate.subtract(const Duration(days: 1)));
-                                  _refreshAll();
-                                },
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _selectedDate.toIso8601String().substring(0, 10) == DateTime.now().toIso8601String().substring(0, 10)
-                                    ? "Today"
-                                    : _selectedDate.toIso8601String().substring(5, 10),
-                                style: const TextStyle(color: Colors.white70, fontSize: 13),
-                              ),
-                              const SizedBox(width: 4),
-                              const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white70, size: 16),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                constraints: const BoxConstraints(),
-                                padding: EdgeInsets.zero,
-                                icon: const Icon(Icons.chevron_right, color: Colors.white60, size: 20),
-                                onPressed: () {
-                                  setState(() => _selectedDate = _selectedDate.add(const Duration(days: 1)));
-                                  _refreshAll();
-                                },
-                              ),
-                            ],
+                          const Spacer(),
+                          Text(
+                            '$mealKcal kcal',
+                            style: const TextStyle(
+                              color: _gold,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(child: _nutritionCard('Protein', _tPro, _pro, const Color(0xFF5B9BF5), Icons.close_rounded)),
-                          const SizedBox(width: 12),
-                          Expanded(child: _nutritionCard('Carbs', _tCarb, _carb, const Color(0xFFF5A623), Icons.local_fire_department_rounded)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(child: _nutritionCard('Fats', _tFat, _fat, const Color(0xFF50E3C2), Icons.water_drop_rounded)),
-                          const SizedBox(width: 12),
-                          Expanded(child: _nutritionCard('Fiber', _tFib, _fib, const Color(0xFF7ED321), Icons.eco_rounded)),
-                        ],
+                      const SizedBox(height: 4),
+                      Text(
+                        'P: ${mealPro.round()}g  ·  C: ${mealCarb.round()}g  ·  F: ${mealFat.round()}g  ·  Fb: ${mealFib.round()}g',
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                
-                // ── Goal Banner ──
-                Container(
-                  padding: const EdgeInsets.all(16),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Divider(color: Colors.white10, height: 1),
+            const SizedBox(height: 8),
+            // Entries list
+            ...entries.map((entry) {
+              final indexInMain = _logEntries.indexOf(entry);
+              final List<dynamic> foods = entry['foods'] as List? ?? [];
+              final localImagePath = entry['imagePath'] as String?;
+
+              return Dismissible(
+                key: ValueKey('entry_${entry['timestamp']}'),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
                   decoration: BoxDecoration(
-                    color: _card,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                    color: Colors.redAccent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.flag_rounded, color: _gold, size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Goal: $_goalLabel',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () async {
-                          final r = await showModalBottomSheet<bool>(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: const Color(0xFF1A1A1A),
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                            ),
-                            builder: (_) => _EditPlanSheet(
-                              cal: _cal,
-                              pro: _pro,
-                              carb: _carb,
-                              fat: _fat,
-                              fib: _fib,
-                            ),
-                          );
-                          if (r == true) _refreshAll();
-                        },
-                        child: const Text(
-                          'Edit Plan',
-                          style: TextStyle(
-                            color: _gold,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: const Icon(
+                    Icons.delete_rounded,
+                    color: Colors.redAccent,
+                    size: 20,
                   ),
                 ),
-                const SizedBox(height: 20),
-                
-                // ── Meals or Empty State ──
-                if (_logEntries.isEmpty)
+                onDismissed: (_) => _deleteEntry(indexInMain),
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FoodDetailScreen(
+                          foods: foods,
+                          imagePath: localImagePath,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.02),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.02)),
+                      ),
+                      child: Row(
+                        children: [
+                          if (localImagePath != null && localImagePath.isNotEmpty) ...[
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.file(
+                                File(localImagePath),
+                                height: 50,
+                                width: 50,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Container(
+                                      height: 50,
+                                      width: 50,
+                                      color: Colors.white10,
+                                      child: const Icon(Icons.restaurant, color: Colors.white38, size: 20),
+                                    ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                          ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: foods.map((f) {
+                                final name = f['name'] as String? ?? 'Food';
+                                final cal = f['cal'] as num? ?? 0;
+                                final grams = (f['grams'] as num?)?.round() ?? 100;
+                                final isEst = f['isEstimate'] == true;
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 2),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          "$name (${isEst ? '~' : ''}${grams}g)",
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 13,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        "${cal.round()} kcal",
+                                        style: const TextStyle(
+                                          color: Colors.white38,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white24,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _startFoodScan(mealType),
+                icon: const Icon(Icons.add_rounded, size: 16, color: _gold),
+                label: const Text(
+                  'Add Item',
+                  style: TextStyle(color: _gold, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getDayNameShort(int weekday) {
+    switch (weekday) {
+      case DateTime.monday: return 'Mon';
+      case DateTime.tuesday: return 'Tue';
+      case DateTime.wednesday: return 'Wed';
+      case DateTime.thursday: return 'Thu';
+      case DateTime.friday: return 'Fri';
+      case DateTime.saturday: return 'Sat';
+      case DateTime.sunday: return 'Sun';
+      default: return '';
+    }
+  }
+
+  Future<void> _loadLast7DaysStats() async {
+    final p = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    int tracked = 0;
+    int goalsMet = 0;
+    final Map<String, Map<String, dynamic>> tempStats = {};
+
+    for (int i = 6; i >= 0; i--) {
+      final date = now.subtract(Duration(days: i));
+      final dateStr = date.toIso8601String().substring(0, 10);
+      final key = 'food_log_${_uid}_$dateStr';
+      final j = p.getString(key);
+      
+      int dayCal = 0;
+      double dayPro = 0, dayCarb = 0, dayFat = 0, dayFib = 0;
+      bool hasLogs = false;
+
+      if (j != null && j.isNotEmpty) {
+        try {
+          final list = (jsonDecode(j) as List).cast<Map<String, dynamic>>();
+          if (list.isNotEmpty) {
+            hasLogs = true;
+            tracked++;
+            for (final entry in list) {
+              dayCal += (entry['totalCalories'] as num?)?.toInt() ?? 0;
+              dayPro += (entry['totalProtein'] as num?)?.toDouble() ?? 0.0;
+              dayCarb += (entry['totalCarbs'] as num?)?.toDouble() ?? 0.0;
+              dayFat += (entry['totalFats'] as num?)?.toDouble() ?? 0.0;
+              dayFib += (entry['totalFiber'] as num?)?.toDouble() ?? 0.0;
+            }
+          }
+        } catch (_) {}
+      }
+
+      bool goalMet = false;
+      if (hasLogs && _cal > 0) {
+        final double ratio = dayCal / _cal;
+        if (ratio >= 0.85 && ratio <= 1.15) {
+          goalMet = true;
+          goalsMet++;
+        }
+      }
+
+      tempStats[dateStr] = {
+        'dayName': _getDayNameShort(date.weekday),
+        'dayNum': date.day.toString(),
+        'dateStr': dateStr,
+        'hasLogs': hasLogs,
+        'goalMet': goalMet,
+        'calories': dayCal,
+        'protein': dayPro,
+        'carbs': dayCarb,
+        'fats': dayFat,
+        'fiber': dayFib,
+      };
+    }
+
+    setState(() {
+      _last7DaysData = tempStats;
+      _streakDays = tracked;
+      _goalsMetCount = goalsMet;
+    });
+  }
+
+  Widget _horizontalCalendarStrip() {
+    final now = DateTime.now();
+    return Container(
+      height: 76,
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: 7,
+        physics: const BouncingScrollPhysics(),
+        itemBuilder: (context, index) {
+          final date = now.subtract(Duration(days: 6 - index));
+          final dateStr = date.toIso8601String().substring(0, 10);
+          final isSelected = date.year == _selectedDate.year &&
+              date.month == _selectedDate.month &&
+              date.day == _selectedDate.day;
+          final isToday = date.year == now.year &&
+              date.month == now.month &&
+              date.day == now.day;
+
+          final dayData = _last7DaysData[dateStr];
+          final bool hasLogs = dayData?['hasLogs'] as bool? ?? false;
+          final bool goalMet = dayData?['goalMet'] as bool? ?? false;
+
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedDate = date;
+              });
+              _refreshAll();
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 54,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? _gold.withValues(alpha: 0.15)
+                    : _card.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected
+                      ? _gold
+                      : Colors.white.withValues(alpha: 0.05),
+                  width: isSelected ? 1.5 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: _gold.withValues(alpha: 0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        )
+                      ]
+                    : null,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _getDayNameShort(date.weekday),
+                    style: TextStyle(
+                      color: isSelected ? _gold : Colors.white38,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${date.day}',
+                    style: TextStyle(
+                      color: isToday && !isSelected ? _gold : Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (hasLogs) ...[
+                    const SizedBox(height: 4),
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: goalMet ? const Color(0xFF4ADE80) : const Color(0xFF5B9BF5),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLast7DaysProgressCard() {
+    if (_last7DaysData.isEmpty) return const SizedBox.shrink();
+
+    final now = DateTime.now();
+    final List<Widget> dayColumns = [];
+
+    for (int i = 6; i >= 0; i--) {
+      final date = now.subtract(Duration(days: i));
+      final dateStr = date.toIso8601String().substring(0, 10);
+      final dayData = _last7DaysData[dateStr] ?? {
+        'dayName': _getDayNameShort(date.weekday),
+        'dayNum': date.day.toString(),
+        'hasLogs': false,
+        'goalMet': false,
+        'calories': 0,
+      };
+
+      final bool hasLogs = dayData['hasLogs'] as bool? ?? false;
+      final bool goalMet = dayData['goalMet'] as bool? ?? false;
+      final int calories = dayData['calories'] as int? ?? 0;
+
+      double pct = 0.0;
+      if (_cal > 0) {
+        pct = (calories / _cal).clamp(0.0, 1.2);
+      }
+
+      Color barColor = Colors.white10;
+      if (hasLogs) {
+        barColor = goalMet ? const Color(0xFF4ADE80) : const Color(0xFF5B9BF5);
+      }
+
+      dayColumns.add(
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedDate = date;
+              });
+              _refreshAll();
+            },
+            child: Column(
+              children: [
+                Text(
+                  dayData['dayName'].toString(),
+                  style: const TextStyle(
+                    color: Colors.white38,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 80,
+                  width: 16,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.bottomCenter,
+                  child: FractionallySizedBox(
+                    heightFactor: pct.clamp(0.0, 1.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: goalMet 
+                              ? [const Color(0xFF2E7D32), const Color(0xFF4ADE80)]
+                              : [const Color(0xFF1565C0), const Color(0xFF5B9BF5)],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: barColor.withValues(alpha: 0.2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Icon(
+                  hasLogs
+                      ? (goalMet ? Icons.check_circle_rounded : Icons.radio_button_checked_rounded)
+                      : Icons.radio_button_off_rounded,
+                  color: hasLogs
+                      ? (goalMet ? const Color(0xFF4ADE80) : const Color(0xFF5B9BF5))
+                      : Colors.white24,
+                  size: 14,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  dayData['dayNum'].toString(),
+                  style: TextStyle(
+                    color: date.day == _selectedDate.day && date.month == _selectedDate.month
+                        ? _gold
+                        : Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(24.0),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.06),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.analytics_rounded, color: _gold, size: 22),
+              const SizedBox(width: 10),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Last 7 Days Progress",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Text(
+                    "Tap any day to view its logs",
+                    style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _gold.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "Goal: $_cal kcal",
+                  style: const TextStyle(
+                    color: _gold,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _streakItem("Food Logged", "$_streakDays / 7 days", Colors.blueAccent),
+              _streakItem("Goal Hit", "$_goalsMetCount / 7 days", const Color(0xFF4ADE80)),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Divider(color: Colors.white10, height: 1),
+          const SizedBox(height: 20),
+          Row(
+            children: dayColumns,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _streakItem(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.02),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white38, fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _planView() {
+    final int remaining = _cal - _tCal;
+    final bool isOver = remaining < 0;
+    final int displayRemaining = remaining.abs();
+    final double calPct = _cal > 0 ? (_tCal / _cal).clamp(0.0, 1.0) : 0.0;
+
+    double totalMacros = (_tPro + _tCarb + _tFat).toDouble();
+    double proPct = totalMacros > 0 ? _tPro / totalMacros : 0.0;
+    double carbPct = totalMacros > 0 ? _tCarb / totalMacros : 0.0;
+    double fatPct = totalMacros > 0 ? _tFat / totalMacros : 0.0;
+
+    final String activeDateLabel = _selectedDate.toIso8601String().substring(0, 10) ==
+            DateTime.now().toIso8601String().substring(0, 10)
+        ? "Today"
+        : "${_selectedDate.day}/${_selectedDate.month}";
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF0F0F12),
+            Color(0xFF14141A),
+          ],
+        ),
+      ),
+      child: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverAppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              pinned: false,
+              floating: true,
+              title: const Text(
+                'Food Log',
+                style: TextStyle(
+                  color: _gold,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                ),
+              ),
+              actions: [
+                IconButton(
+                  icon: const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: _card,
+                    child: Icon(
+                      Icons.help_outline_rounded,
+                      color: _gold,
+                      size: 18,
+                    ),
+                  ),
+                  tooltip: 'Scan Tips',
+                  onPressed: () => Navigator.push(
+                    context,
+                    _slideRoute(const ScanTutorialScreen()),
+                  ),
+                ),
+                IconButton(
+                  icon: const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: _card,
+                    child: Icon(Icons.autorenew_rounded, color: _gold, size: 18),
+                  ),
+                  tooltip: 'Regenerate Plan',
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      _slideRoute(const _ConfirmProfileScreen()),
+                    );
+                    _refreshAll();
+                  },
+                ),
+                IconButton(
+                  icon: const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: _card,
+                    child: Icon(Icons.person, color: _gold, size: 18),
+                  ),
+                  onPressed: () =>
+                      Navigator.push(context, _slideRoute(const ProfilePage())),
+                ),
+              ],
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  const SizedBox(height: 8),
+                  
+                  // ── Calorie Intake Card ──
+                  Container(
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(24.0),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isOver ? "SURPLUS CALORIES" : "CALORIES REMAINING",
+                                  style: TextStyle(
+                                    color: isOver ? Colors.redAccent.withValues(alpha: 0.8) : Colors.white38,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                                  textBaseline: TextBaseline.alphabetic,
+                                  children: [
+                                    TweenAnimationBuilder<int>(
+                                      tween: IntTween(begin: 0, end: displayRemaining),
+                                      duration: const Duration(milliseconds: 600),
+                                      curve: Curves.easeOutCubic,
+                                      builder: (context, val, _) => Text(
+                                        '$val',
+                                        style: TextStyle(
+                                          color: isOver ? Colors.redAccent : Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 42,
+                                          height: 1.0,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'kcal',
+                                      style: TextStyle(
+                                        color: isOver ? Colors.redAccent.withValues(alpha: 0.6) : Colors.white38,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.flag_rounded, color: Colors.white38, size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Goal: $_cal',
+                                      style: const TextStyle(color: Colors.white38, fontSize: 12),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Icon(Icons.restaurant, color: _gold, size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Food: $_tCal',
+                                      style: const TextStyle(color: _gold, fontSize: 12, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            SizedBox(
+                              width: 80,
+                              height: 80,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  CircularProgressIndicator(
+                                    value: calPct,
+                                    strokeWidth: 8,
+                                    backgroundColor: Colors.white.withValues(alpha: 0.05),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      isOver ? Colors.redAccent : _gold,
+                                    ),
+                                  ),
+                                  Center(
+                                    child: Text(
+                                      '${(calPct * 100).toInt()}%',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        const Divider(color: Colors.white10, height: 1),
+                        const SizedBox(height: 16),
+                        
+                        // Sleek stacked macro bar
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: SizedBox(
+                            height: 6,
+                            child: Row(
+                              children: [
+                                if (proPct > 0)
+                                  Expanded(
+                                    flex: (proPct * 100).round().clamp(1, 100),
+                                    child: Container(color: const Color(0xFF5B9BF5)),
+                                  ),
+                                if (carbPct > 0)
+                                  Expanded(
+                                    flex: (carbPct * 100).round().clamp(1, 100),
+                                    child: Container(color: const Color(0xFFF5A623)),
+                                  ),
+                                if (fatPct > 0)
+                                  Expanded(
+                                    flex: (fatPct * 100).round().clamp(1, 100),
+                                    child: Container(color: const Color(0xFF50E3C2)),
+                                  ),
+                                if (proPct == 0 && carbPct == 0 && fatPct == 0)
+                                  Expanded(child: Container(color: Colors.white12)),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _simpleMacro('Protein', _tPro, const Color(0xFF5B9BF5)),
+                            _simpleMacro('Carbs', _tCarb, const Color(0xFFF5A623)),
+                            _simpleMacro('Fats', _tFat, const Color(0xFF50E3C2)),
+                            _simpleMacro('Fiber', _tFib, const Color(0xFF7ED321)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // ── Horizontal swipeable 7-day strip ──
+                  _horizontalCalendarStrip(),
+                  const SizedBox(height: 8),
+
+                  // ── Log Food Manually Button ──
+                  SizedBox(
+                    height: 50,
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final r = await showModalBottomSheet<bool>(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: const Color(0xFF1A1A1A),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(24),
+                            ),
+                          ),
+                          builder: (_) => const _AddFoodSheet(),
+                        );
+                        if (r == true) _refreshAll();
+                      },
+                      icon: const Icon(
+                        Icons.playlist_add_rounded,
+                        color: _gold,
+                        size: 20,
+                      ),
+                      label: const Text(
+                        'Log Food Manually',
+                        style: TextStyle(
+                          color: _gold,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: _gold.withValues(alpha: 0.4)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Nutrition Summary Card ──
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: _card,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                      borderRadius: BorderRadius.circular(24.0),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06),
+                      ),
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const CircleAvatar(
-                                radius: 14,
-                                backgroundColor: _gold,
-                                child: Icon(Icons.star_rounded, color: Colors.black, size: 18),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              "Macro Details ($activeDateLabel)",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
-                              const SizedBox(height: 12),
-                              const Text(
-                                "You're all set!",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "Start logging your meals to\ntrack your progress.",
-                                style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 13,
-                                  height: 1.3,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.calendar_month_rounded, color: _gold, size: 20),
+                              onPressed: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: _selectedDate,
+                                  firstDate: DateTime.now().subtract(const Duration(days: 90)),
+                                  lastDate: DateTime.now().add(const Duration(days: 30)),
+                                  builder: (context, child) {
+                                    return Theme(
+                                      data: Theme.of(context).copyWith(
+                                        colorScheme: const ColorScheme.dark(
+                                          primary: _gold,
+                                          onPrimary: Colors.black,
+                                          surface: _card,
+                                          onSurface: Colors.white,
+                                        ),
+                                      ),
+                                      child: child!,
+                                    );
+                                  },
+                                );
+                                if (picked != null) {
+                                  setState(() {
+                                    _selectedDate = picked;
+                                  });
+                                  _refreshAll();
+                                }
+                              },
+                            ),
+                          ],
                         ),
-                        const Icon(Icons.assignment_rounded, color: _gold, size: 60),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _nutritionCard(
+                                'Protein',
+                                _tPro,
+                                _pro,
+                                const Color(0xFF5B9BF5),
+                                Icons.fitness_center_rounded,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _nutritionCard(
+                                'Carbs',
+                                _tCarb,
+                                _carb,
+                                const Color(0xFFF5A623),
+                                Icons.bolt_rounded,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _nutritionCard(
+                                'Fats',
+                                _tFat,
+                                _fat,
+                                const Color(0xFF50E3C2),
+                                Icons.water_drop_rounded,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _nutritionCard(
+                                'Fiber',
+                                _tFib,
+                                _fib,
+                                const Color(0xFF7ED321),
+                                Icons.eco_rounded,
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 16),
 
-                if (_logEntries.isNotEmpty) ...[
+                  // ── Goal Banner ──
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flag_rounded, color: _gold, size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Goal: $_goalLabel',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () async {
+                            final r = await showModalBottomSheet<bool>(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: const Color(0xFF1A1A1A),
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.vertical(
+                                  top: Radius.circular(24),
+                                ),
+                              ),
+                              builder: (_) => _EditPlanSheet(
+                                cal: _cal,
+                                pro: _pro,
+                                carb: _carb,
+                                fat: _fat,
+                                fib: _fib,
+                              ),
+                            );
+                            if (r == true) _refreshAll();
+                          },
+                          child: const Text(
+                            'Edit Plan',
+                            style: TextStyle(
+                              color: _gold,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Meals Title ──
                   const Text(
-                    "Meals",
+                    "Meals Logged",
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -1182,16 +1806,23 @@ class _FoodLogPageState extends State<FoodLogPage>
                     ),
                   ),
                   const SizedBox(height: 12),
+
+                  // ── Meal Sections ──
                   _mealSection('breakfast', '🌅', 'Breakfast'),
                   _mealSection('lunch', '☀️', 'Lunch'),
                   _mealSection('dinner', '🌙', 'Dinner'),
                   _mealSection('snack', '🍎', 'Snack'),
-                ],
-                const SizedBox(height: 100),
-              ]),
+                  const SizedBox(height: 24),
+
+                  // ── Last 7 Days Progress Card ──
+                  _buildLast7DaysProgressCard(),
+                  
+                  const SizedBox(height: 100),
+                ]),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1709,8 +2340,6 @@ class FoodScanResultScreen extends StatefulWidget {
 }
 
 class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
-  bool _saveAsYesterday = false;
-
   int _targetCal = 2000;
   int _targetPro = 150;
   int _targetCarb = 200;
@@ -2120,22 +2749,6 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            CheckboxListTile(
-              title: const Text(
-                "Save as Yesterday's Food",
-                style: TextStyle(color: Colors.white70, fontSize: 15),
-              ),
-              value: _saveAsYesterday,
-              activeColor: const Color(0xFFFFD700),
-              checkColor: Colors.black,
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              side: const BorderSide(color: Colors.white54),
-              onChanged: (val) {
-                setState(() => _saveAsYesterday = val ?? false);
-              },
-            ),
-            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               height: 56,
@@ -2146,9 +2759,7 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
                   final uid = user.uid;
                   final p = await SharedPreferences.getInstance();
 
-                  final targetDate = _saveAsYesterday
-                      ? DateTime.now().subtract(const Duration(days: 1))
-                      : widget.selectedDate;
+                  final targetDate = widget.selectedDate;
                   final todayStr = targetDate.toIso8601String().substring(
                     0,
                     10,
@@ -2304,13 +2915,14 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final rows = [
-      ['Name', _name],
-      ['Gender', _gender],
-      ['Height', _height.isNotEmpty ? '$_height cm' : ''],
-      ['Weight', _weight.isNotEmpty ? '$_weight kg' : ''],
-      ['Age', _age.isNotEmpty ? '$_age years' : ''],
+    final items = [
+      {'label': 'Name', 'value': _name.isNotEmpty ? _name : 'Not set', 'icon': Icons.person_rounded, 'color': const Color(0xFF5B9BF5)},
+      {'label': 'Gender', 'value': _gender.isNotEmpty ? _gender : 'Not set', 'icon': Icons.wc_rounded, 'color': const Color(0xFFF5A623)},
+      {'label': 'Height', 'value': _height.isNotEmpty ? '$_height cm' : 'Not set', 'icon': Icons.height_rounded, 'color': const Color(0xFF50E3C2)},
+      {'label': 'Weight', 'value': _weight.isNotEmpty ? '$_weight kg' : 'Not set', 'icon': Icons.monitor_weight_rounded, 'color': const Color(0xFF7ED321)},
+      {'label': 'Age', 'value': _age.isNotEmpty ? '$_age years' : 'Not set', 'icon': Icons.cake_rounded, 'color': const Color(0xFFD0021B)},
     ];
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: _stepAppBar(context, 'Your Profile'),
@@ -2323,7 +2935,7 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
               _stepBar(0.2),
               const SizedBox(height: 24),
               const Text(
-                'Your Profile',
+                'Confirm Biometrics',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -2332,61 +2944,115 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
               ),
               const SizedBox(height: 6),
               const Text(
-                "We'll use this to personalise your plan",
-                style: TextStyle(color: Colors.white54),
+                "These stats are used to calculate your BMR and TDEE.",
+                style: TextStyle(color: Colors.white54, fontSize: 13),
               ),
               const SizedBox(height: 24),
-              Container(
-                decoration: _cardDeco(),
-                padding: const EdgeInsets.symmetric(
-                  vertical: 8,
-                  horizontal: 20,
-                ),
-                child: Column(
-                  children: [
-                    for (int i = 0; i < rows.length; i++) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              
+              // Name Card (Wide)
+              GestureDetector(
+                onTap: () async {
+                  Navigator.pop(context);
+                  await Navigator.push(context, _slideRoute(const ProfilePage()));
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: _card,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF5B9BF5).withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(items[0]['icon'] as IconData, color: const Color(0xFF5B9BF5), size: 22),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Text(items[0]['label'] as String, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                            const SizedBox(height: 2),
                             Text(
-                              rows[i][0],
-                              style: const TextStyle(color: Colors.white54),
-                            ),
-                            Text(
-                              rows[i][1].isEmpty ? 'Not set' : rows[i][1],
-                              style: TextStyle(
-                                color: rows[i][1].isEmpty
-                                    ? Colors.redAccent
-                                    : _gold,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              items[0]['value'] as String,
+                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
                       ),
-                      if (i < rows.length - 1)
-                        Divider(
-                          color: Colors.white.withValues(alpha: 0.06),
-                          height: 1,
-                        ),
+                      const Icon(Icons.chevron_right_rounded, color: Colors.white24),
                     ],
-                  ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 20),
-              const Row(
+              const SizedBox(height: 12),
+
+              // 2x2 Grid for other biometrics
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: 4,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.45,
+                ),
+                itemBuilder: (context, idx) {
+                  final item = items[idx + 1];
+                  final bool isUnset = item['value'] == 'Not set';
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isUnset ? Colors.redAccent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(item['label'] as String, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                            Icon(item['icon'] as IconData, color: (item['color'] as Color).withValues(alpha: 0.8), size: 18),
+                          ],
+                        ),
+                        Text(
+                          item['value'] as String,
+                          style: TextStyle(
+                            color: isUnset ? Colors.redAccent : Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 28),
+              
+              Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 20),
-                  SizedBox(width: 8),
-                  Text(
+                  Icon(Icons.check_circle_rounded, color: Colors.green.shade400, size: 18),
+                  const SizedBox(width: 8),
+                  const Text(
                     'Are these details correct?',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
                   ),
                 ],
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               _goldButton('Yes, looks good', () {
                 Navigator.push(
                   context,
@@ -2404,7 +3070,7 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                height: 56,
+                height: 52,
                 child: OutlinedButton(
                   onPressed: () async {
                     Navigator.pop(context);
@@ -2415,15 +3081,15 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
                   },
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: Colors.white.withValues(alpha: 0.15),
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
+                      borderRadius: BorderRadius.circular(26),
                     ),
                   ),
                   child: const Text(
                     'Edit in Profile',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -2459,19 +3125,33 @@ class _ActivityScreenState extends State<_ActivityScreen> {
       (_workouts == '0' || _intensity != null) &&
       _steps != null;
 
-  Widget _actCard(String key, IconData icon, String title, String sub) {
+  Widget _actCard(String key, IconData icon, String title, String sub, Color accent) {
     bool s = _activity == key;
     return GestureDetector(
       onTap: () => setState(() => _activity = key),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
-        decoration: _cardDeco(selected: s),
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: s ? _gold.withValues(alpha: 0.08) : _card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: s ? _gold : Colors.white.withValues(alpha: 0.05),
+            width: s ? 2 : 1,
+          ),
+        ),
         child: Row(
           children: [
-            Icon(icon, color: s ? _gold : Colors.white54, size: 28),
-            const SizedBox(width: 14),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: (s ? _gold : accent).withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: s ? _gold : accent, size: 22),
+            ),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2481,14 +3161,21 @@ class _ActivityScreenState extends State<_ActivityScreen> {
                     style: TextStyle(
                       color: s ? _gold : Colors.white,
                       fontWeight: FontWeight.bold,
+                      fontSize: 15,
                     ),
                   ),
+                  const SizedBox(height: 2),
                   Text(
                     sub,
-                    style: const TextStyle(color: Colors.white38, fontSize: 12),
+                    style: const TextStyle(color: Colors.white38, fontSize: 11),
                   ),
                 ],
               ),
+            ),
+            Icon(
+              s ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+              color: s ? _gold : Colors.white24,
+              size: 20,
             ),
           ],
         ),
@@ -2496,21 +3183,19 @@ class _ActivityScreenState extends State<_ActivityScreen> {
     );
   }
 
-  Widget _pill(String label, String? cur, void Function(String) onTap) {
+  Widget _chip(String label, String? cur, void Function(String) onTap) {
     bool s = cur == label;
     return GestureDetector(
       onTap: () => onTap(label),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        height: 44,
-        width: 60,
-        alignment: Alignment.center,
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         margin: const EdgeInsets.only(right: 8),
         decoration: BoxDecoration(
-          color: s ? _gold : const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(12),
+          color: s ? _gold : const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: s ? _gold : Colors.white.withValues(alpha: 0.06),
+            color: s ? _gold : Colors.white.withValues(alpha: 0.05),
           ),
         ),
         child: Text(
@@ -2525,19 +3210,26 @@ class _ActivityScreenState extends State<_ActivityScreen> {
     );
   }
 
-  Widget _intCard(String key, IconData icon, String label) {
+  Widget _intCard(String key, IconData icon, String label, Color accent) {
     bool s = _intensity == key;
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _intensity = key),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          decoration: _cardDeco(selected: s),
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+            color: s ? _gold.withValues(alpha: 0.08) : _card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: s ? _gold : Colors.white.withValues(alpha: 0.05),
+              width: s ? 2 : 1,
+            ),
+          ),
           child: Column(
             children: [
-              Icon(icon, color: s ? _gold : Colors.white54, size: 28),
-              const SizedBox(height: 6),
+              Icon(icon, color: s ? _gold : accent, size: 26),
+              const SizedBox(height: 8),
               Text(
                 label,
                 style: TextStyle(
@@ -2580,7 +3272,7 @@ class _ActivityScreenState extends State<_ActivityScreen> {
                     const SizedBox(height: 6),
                     const Text(
                       'Be honest - this directly affects your calorie target',
-                      style: TextStyle(color: Colors.white54),
+                      style: TextStyle(color: Colors.white54, fontSize: 13),
                     ),
                     const SizedBox(height: 24),
                     const Text(
@@ -2591,38 +3283,43 @@ class _ActivityScreenState extends State<_ActivityScreen> {
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     _actCard(
                       'sedentary',
                       Icons.chair_rounded,
                       'Sedentary',
                       'Desk job, minimal movement',
+                      Colors.grey,
                     ),
                     _actCard(
                       'lightly_active',
                       Icons.directions_walk_rounded,
                       'Lightly Active',
                       'Light walks, some standing',
+                      Colors.blueAccent,
                     ),
                     _actCard(
                       'moderately_active',
                       Icons.directions_run_rounded,
                       'Moderately Active',
                       'Regular exercise or active job',
+                      Colors.orangeAccent,
                     ),
                     _actCard(
                       'very_active',
                       Icons.bolt_rounded,
                       'Very Active',
                       'Intense training or physical job',
+                      Colors.redAccent,
                     ),
                     _actCard(
                       'athlete',
                       Icons.emoji_events_rounded,
                       'Athlete',
                       'Multiple sessions daily',
+                      Colors.purpleAccent,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     const Text(
                       'Workouts per week',
                       style: TextStyle(
@@ -2631,25 +3328,29 @@ class _ActivityScreenState extends State<_ActivityScreen> {
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: ['0', '1-2', '3-4', '5-6', '7+']
-                          .map(
-                            (l) => _pill(
-                              l,
-                              _workouts,
-                              (v) => setState(() {
-                                _workouts = v;
-                                if (v == '0') {
-                                  _intensity = null; // Clear intensity if 0 workouts
-                                }
-                              }),
-                            ),
-                          )
-                          .toList(),
+                    const SizedBox(height: 12),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: ['0', '1-2', '3-4', '5-6', '7+']
+                            .map(
+                              (l) => _chip(
+                                l,
+                                _workouts,
+                                (v) => setState(() {
+                                  _workouts = v;
+                                  if (v == '0') {
+                                    _intensity = null;
+                                  }
+                                }),
+                              ),
+                            )
+                            .toList(),
+                      ),
                     ),
                     if (_workouts != '0' && _workouts != null) ...[
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 24),
                       const Text(
                         'Workout Intensity',
                         style: TextStyle(
@@ -2658,26 +3359,33 @@ class _ActivityScreenState extends State<_ActivityScreen> {
                           fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       Row(
                         children: [
-                          _intCard('low', Icons.self_improvement_rounded, 'Low'),
-                          const SizedBox(width: 10),
+                          _intCard(
+                            'low',
+                            Icons.self_improvement_rounded,
+                            'Low',
+                            Colors.greenAccent,
+                          ),
+                          const SizedBox(width: 12),
                           _intCard(
                             'normal',
                             Icons.fitness_center_rounded,
                             'Normal',
+                            Colors.blueAccent,
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 12),
                           _intCard(
                             'hard',
                             Icons.local_fire_department_rounded,
                             'Hard',
+                            Colors.redAccent,
                           ),
                         ],
                       ),
                     ],
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     const Text(
                       'Daily Steps',
                       style: TextStyle(
@@ -2686,17 +3394,21 @@ class _ActivityScreenState extends State<_ActivityScreen> {
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: ['<2k', '2-5k', '5-8k', '8-12k', '12k+']
-                          .map(
-                            (l) => _pill(
-                              l,
-                              _steps,
-                              (v) => setState(() => _steps = v),
-                            ),
-                          )
-                          .toList(),
+                    const SizedBox(height: 12),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: ['<2k', '2-5k', '5-8k', '8-12k', '12k+']
+                            .map(
+                              (l) => _chip(
+                                l,
+                                _steps,
+                                (v) => setState(() => _steps = v),
+                              ),
+                            )
+                            .toList(),
+                      ),
                     ),
                     const SizedBox(height: 24),
                   ],
@@ -2810,6 +3522,7 @@ class _GoalScreenState extends State<_GoalScreen> {
       'rocket_launch_rounded',
     ],
   ];
+
   IconData _goalIcon(String k) {
     switch (k) {
       case 'local_fire_department_rounded':
@@ -2826,6 +3539,25 @@ class _GoalScreenState extends State<_GoalScreen> {
         return Icons.eco_rounded;
       default:
         return Icons.rocket_launch_rounded;
+    }
+  }
+
+  Color _goalColor(String key) {
+    switch (key) {
+      case 'lose_fat':
+        return Colors.redAccent;
+      case 'build_muscle':
+        return Colors.blueAccent;
+      case 'gain_weight_muscle':
+        return Colors.indigoAccent;
+      case 'body_recomposition':
+        return Colors.purpleAccent;
+      case 'maintain_tone':
+        return Colors.greenAccent;
+      case 'eat_cleaner':
+        return Colors.tealAccent;
+      default:
+        return _gold;
     }
   }
 
@@ -2856,46 +3588,72 @@ class _GoalScreenState extends State<_GoalScreen> {
                     const SizedBox(height: 6),
                     const Text(
                       'Choose the one that fits you best right now',
-                      style: TextStyle(color: Colors.white54),
+                      style: TextStyle(color: Colors.white54, fontSize: 13),
                     ),
                     const SizedBox(height: 24),
                     ..._goals.map((g) {
-                      bool s = _goal == g[0];
+                      final key = g[0];
+                      final title = g[1];
+                      final desc = g[2];
+                      final iconName = g[3];
+                      final s = _goal == key;
+                      final accentColor = _goalColor(key);
                       return GestureDetector(
-                        onTap: () => setState(() => _goal = g[0]),
+                        onTap: () => setState(() => _goal = key),
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(16),
-                          decoration: _cardDeco(selected: s),
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: s ? _gold.withValues(alpha: 0.08) : _card,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: s ? _gold : Colors.white.withValues(alpha: 0.05),
+                              width: s ? 2 : 1,
+                            ),
+                          ),
                           child: Row(
                             children: [
-                              Icon(
-                                _goalIcon(g[3]),
-                                color: s ? _gold : Colors.white54,
-                                size: 28,
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: (s ? _gold : accentColor).withValues(alpha: 0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  _goalIcon(iconName),
+                                  color: s ? _gold : accentColor,
+                                  size: 22,
+                                ),
                               ),
-                              const SizedBox(width: 14),
+                              const SizedBox(width: 16),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      g[1],
+                                      title,
                                       style: TextStyle(
                                         color: s ? _gold : Colors.white,
                                         fontWeight: FontWeight.bold,
+                                        fontSize: 15,
                                       ),
                                     ),
+                                    const SizedBox(height: 2),
                                     Text(
-                                      g[2],
+                                      desc,
                                       style: const TextStyle(
                                         color: Colors.white38,
-                                        fontSize: 12,
+                                        fontSize: 11,
                                       ),
                                     ),
                                   ],
                                 ),
+                              ),
+                              Icon(
+                                s ? Icons.check_circle_rounded : Icons.radio_button_off_rounded,
+                                color: s ? _gold : Colors.white24,
+                                size: 20,
                               ),
                             ],
                           ),
@@ -2976,22 +3734,27 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
   final _types = const [
     [
       'slow',
-      'Slow',
-      'I gain weight easily, even when I eat little. Losing is hard.',
+      'Slow Metabolism',
+      'I gain weight easily, even when eating little. Weight loss requires strict control.',
     ],
-    ['normal', 'Normal', 'My weight is fairly stable and predictable.'],
-    ['fast', 'Fast', 'I stay lean easily. I can eat a lot without gaining.'],
+    ['normal', 'Normal Metabolism', 'My weight is fairly stable, predictable, and responsive to activity.'],
+    ['fast', 'Fast Metabolism', 'I stay lean easily. I can consume higher calories without gaining weight.'],
   ];
+
   IconData _mi(String k) => k == 'slow'
-      ? Icons.snooze_rounded
+      ? Icons.speed_rounded
       : k == 'normal'
       ? Icons.balance_rounded
-      : Icons.flash_on_rounded;
+      : Icons.bolt_rounded;
+
   Color _mc(String k, bool s) => k == 'slow' && s
-      ? Colors.redAccent
+      ? Colors.orangeAccent
+      : k == 'fast' && s
+      ? Colors.cyanAccent
       : s
       ? _gold
       : Colors.white54;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -3018,15 +3781,15 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Helps fine-tune your calorie estimate',
-                      style: TextStyle(color: Colors.white54),
+                      'Helps fine-tune your baseline calorie targets',
+                      style: TextStyle(color: Colors.white54, fontSize: 13),
                     ),
                     const SizedBox(height: 20),
                     Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: _gold.withValues(alpha: 0.3)),
+                        color: _gold.withValues(alpha: 0.03),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: _gold.withValues(alpha: 0.15)),
                       ),
                       child: Column(
                         children: [
@@ -3034,7 +3797,7 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                             onTap: () =>
                                 setState(() => _infoExpanded = !_infoExpanded),
                             child: Padding(
-                              padding: const EdgeInsets.all(14),
+                              padding: const EdgeInsets.all(16),
                               child: Row(
                                 children: [
                                   const Icon(
@@ -3042,13 +3805,14 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                                     color: _gold,
                                     size: 20,
                                   ),
-                                  const SizedBox(width: 10),
+                                  const SizedBox(width: 12),
                                   const Expanded(
                                     child: Text(
                                       'What is metabolism?',
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
+                                        fontSize: 14,
                                       ),
                                     ),
                                   ),
@@ -3056,8 +3820,9 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                                     turns: _infoExpanded ? 0.5 : 0,
                                     duration: const Duration(milliseconds: 250),
                                     child: const Icon(
-                                      Icons.expand_more,
+                                      Icons.expand_more_rounded,
                                       color: _gold,
+                                      size: 20,
                                     ),
                                   ),
                                 ],
@@ -3065,15 +3830,16 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                             ),
                           ),
                           AnimatedSize(
-                            duration: const Duration(milliseconds: 300),
+                            duration: const Duration(milliseconds: 250),
                             child: _infoExpanded
                                 ? const Padding(
-                                    padding: EdgeInsets.fromLTRB(14, 0, 14, 14),
+                                    padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
                                     child: Text(
-                                      'Metabolism is how fast your body burns calories at rest. Slow = you gain weight easily. Normal = average burn rate. Fast = you stay lean easily and can eat more without gaining.',
+                                      'Metabolism represents the rate at which your body burns energy at rest. Factoring this in helps calibrate your meal targets more accurately than generic equations.',
                                       style: TextStyle(
                                         color: Colors.white54,
                                         fontSize: 13,
+                                        height: 1.4,
                                       ),
                                     ),
                                   )
@@ -3082,42 +3848,65 @@ class _MetabolismScreenState extends State<_MetabolismScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     ..._types.map((t) {
-                      bool s = _metabolism == t[0];
+                      final key = t[0];
+                      final title = t[1];
+                      final desc = t[2];
+                      bool s = _metabolism == key;
+                      final iconColor = _mc(key, s);
                       return GestureDetector(
-                        onTap: () => setState(() => _metabolism = t[0]),
+                        onTap: () => setState(() => _metabolism = key),
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
+                          duration: const Duration(milliseconds: 200),
                           margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(20),
-                          decoration: _cardDeco(selected: s),
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: s ? _gold.withValues(alpha: 0.08) : _card,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: s ? _gold : Colors.white.withValues(alpha: 0.05),
+                              width: s ? 2 : 1,
+                            ),
+                          ),
                           child: Row(
                             children: [
-                              Icon(_mi(t[0]), color: _mc(t[0], s), size: 32),
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: iconColor.withValues(alpha: 0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(_mi(key), color: iconColor, size: 22),
+                              ),
                               const SizedBox(width: 16),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      t[1],
+                                      title,
                                       style: TextStyle(
                                         color: s ? _gold : Colors.white,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 18,
+                                        fontSize: 15,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      t[2],
+                                      desc,
                                       style: const TextStyle(
                                         color: Colors.white38,
-                                        fontSize: 13,
+                                        fontSize: 11,
                                       ),
                                     ),
                                   ],
                                 ),
+                              ),
+                              Icon(
+                                s ? Icons.check_circle_rounded : Icons.radio_button_off_rounded,
+                                color: s ? _gold : Colors.white24,
+                                size: 20,
                               ),
                             ],
                           ),
@@ -3348,14 +4137,18 @@ class _ReviewScreenState extends State<_ReviewScreen> {
                     const SizedBox(height: 6),
                     const Text(
                       "Everything looks right? Let's build it.",
-                      style: TextStyle(color: Colors.white54),
+                      style: TextStyle(color: Colors.white54, fontSize: 13),
                     ),
                     const SizedBox(height: 24),
                     Container(
-                      decoration: _cardDeco(),
+                      decoration: BoxDecoration(
+                        color: _card,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                      ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
-                        vertical: 8,
+                        vertical: 12,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3401,35 +4194,36 @@ class _ReviewScreenState extends State<_ReviewScreen> {
                           _row('Intensity', _fmt(widget.intensity)),
                           _div(),
                           _row('Daily Steps', widget.steps),
-                          _sec('GOAL'),
+                          _sec('GOAL & METABOLISM'),
                           _row('Goal', _fmt(widget.goal)),
-                          _sec('METABOLISM'),
-                          _row('Type', _fmt(widget.metabolism)),
+                          _div(),
+                          _row('Metabolism', _fmt(widget.metabolism)),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     Container(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: _gold.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: _gold.withValues(alpha: 0.3)),
+                        color: _gold.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: _gold.withValues(alpha: 0.15)),
                       ),
                       child: const Row(
                         children: [
                           Icon(
-                            Icons.lock_clock_rounded,
+                            Icons.verified_user_rounded,
                             color: _gold,
                             size: 20,
                           ),
-                          SizedBox(width: 10),
+                          SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'You can regenerate or edit your plan anytime.',
+                              'You can regenerate or edit your plan parameters anytime.',
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontSize: 12,
+                                height: 1.3,
                               ),
                             ),
                           ),
@@ -3608,7 +4402,9 @@ class _EditPlanSheetState extends State<_EditPlanSheet> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1A1A),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.06),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3634,17 +4430,23 @@ class _EditPlanSheetState extends State<_EditPlanSheet> {
                             if (proPct > 0)
                               Expanded(
                                 flex: (proPct * 100).round(),
-                                child: Container(color: const Color(0xFF5B9BF5)),
+                                child: Container(
+                                  color: const Color(0xFF5B9BF5),
+                                ),
                               ),
                             if (carbPct > 0)
                               Expanded(
                                 flex: (carbPct * 100).round(),
-                                child: Container(color: const Color(0xFFF5A623)),
+                                child: Container(
+                                  color: const Color(0xFFF5A623),
+                                ),
                               ),
                             if (fatPct > 0)
                               Expanded(
                                 flex: (fatPct * 100).round(),
-                                child: Container(color: const Color(0xFF50E3C2)),
+                                child: Container(
+                                  color: const Color(0xFF50E3C2),
+                                ),
                               ),
                           ],
                         ),
@@ -3653,9 +4455,21 @@ class _EditPlanSheetState extends State<_EditPlanSheet> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _splitLabel('Protein', '${(proPct * 100).round()}%', const Color(0xFF5B9BF5)),
-                          _splitLabel('Carbs', '${(carbPct * 100).round()}%', const Color(0xFFF5A623)),
-                          _splitLabel('Fats', '${(fatPct * 100).round()}%', const Color(0xFF50E3C2)),
+                          _splitLabel(
+                            'Protein',
+                            '${(proPct * 100).round()}%',
+                            const Color(0xFF5B9BF5),
+                          ),
+                          _splitLabel(
+                            'Carbs',
+                            '${(carbPct * 100).round()}%',
+                            const Color(0xFFF5A623),
+                          ),
+                          _splitLabel(
+                            'Fats',
+                            '${(fatPct * 100).round()}%',
+                            const Color(0xFF50E3C2),
+                          ),
                         ],
                       ),
                     ],
@@ -3746,7 +4560,11 @@ class _EditPlanSheetState extends State<_EditPlanSheet> {
         ),
         Text(
           pct,
-          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
@@ -3976,3 +4794,5 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     );
   }
 }
+
+
