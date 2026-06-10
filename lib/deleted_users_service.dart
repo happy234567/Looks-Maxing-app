@@ -114,8 +114,7 @@ class DeletedUsersService {
     // This ensures user's biometric data (face photos) is removed immediately,
     // including any nested sub-folders under the user's storage path.
     try {
-      final storageRef = FirebaseStorage.instanceFor(
-              bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app')
+      final storageRef = FirebaseStorage.instance
           .ref()
           .child('users/$uid/scans');
       final count = await _deleteStorageRecursive(storageRef);

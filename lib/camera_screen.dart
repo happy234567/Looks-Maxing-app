@@ -494,9 +494,9 @@ class _CameraScreenState extends State<CameraScreen>
                 debugPrint(
                   '[Storage] Starting upload for $type (attempt ${attempt + 1}/${maxRetries + 1}), file: ${file.path}',
                 );
-                final storageRef = FirebaseStorage.instanceFor(
-                  bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app',
-                ).ref().child('users/$userId/scans/${timestamp}_$type.jpg');
+                final storageRef = FirebaseStorage.instance
+                    .ref()
+                    .child('users/$userId/scans/${timestamp}_$type.jpg');
                 await storageRef
                     .putFile(file)
                     .timeout(const Duration(seconds: 60));

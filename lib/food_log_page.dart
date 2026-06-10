@@ -3010,9 +3010,7 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
     String remoteImageUrl = '';
     try {
       final storageRef =
-          FirebaseStorage.instanceFor(
-            bucket: 'gs://looks-maxing-app-a8f7c.firebasestorage.app',
-          ).ref().child(
+          FirebaseStorage.instance.ref().child(
             'users/$uid/food_logs/${DateTime.now().millisecondsSinceEpoch}.jpg',
           );
       final uploadTask = await storageRef.putFile(File(localSavedPath));
