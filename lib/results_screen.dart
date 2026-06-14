@@ -39,7 +39,9 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
 
   Future<void> _loadGender() async {
     final p = await SharedPreferences.getInstance();
-    setState(() => _gender = p.getString('gender') ?? 'Male');
+    if (mounted) {
+      setState(() => _gender = p.getString('gender') ?? 'Male');
+    }
   }
 
   Color _scoreColor(int s) {

@@ -578,7 +578,10 @@ class _LockInPageState extends State<LockInPage> {
   }
 
   void _onSave() async {
-    if (_data != null) { await _save(_data!); setState(() {}); }
+    if (_data != null) {
+      await _save(_data!);
+      if (mounted) setState(() {});
+    }
   }
 
   void _onReset() async {
@@ -598,7 +601,7 @@ class _LockInPageState extends State<LockInPage> {
     );
     if (ok == true) {
       await _deleteSaved();
-      setState(() => _data = null);
+      if (mounted) setState(() => _data = null);
     }
   }
 
@@ -614,7 +617,7 @@ class _LockInPageState extends State<LockInPage> {
     return _Dashboard(
       data: _data!, onSave: _onSave, onReset: _onReset,
       challenge: _challenge,
-      onChallengeUpdate: (c) { setState(() { _challenge = c; }); },
+      onChallengeUpdate: (c) { if (mounted) setState(() { _challenge = c; }); },
     );
   }
 }
@@ -1173,10 +1176,10 @@ class _DashboardState extends State<_Dashboard> with TickerProviderStateMixin {
   }
 
   Color _progressColor(double r) {
-    if (r >= 1.0) return const Color(0xFF39FF14);
-    if (r >= 0.75) return const Color(0xFF8BC34A);
-    if (r >= 0.5) return const Color(0xFFFFD700);
-    if (r >= 0.25) return Colors.orange;
+    if (r >= 1.0) { return const Color(0xFF39FF14); }
+    if (r >= 0.75) { return const Color(0xFF8BC34A); }
+    if (r >= 0.5) { return const Color(0xFFFFD700); }
+    if (r >= 0.25) { return Colors.orange; }
     return const Color(0xFF9E9E9E);
   }
 
@@ -1552,10 +1555,10 @@ class _DayScreenState extends State<_DayScreen> {
   double get _rate => _log.completionRate(widget.customTasks.length);
 
   Color _pColor(double r) {
-    if (r >= 1.0) return const Color(0xFF39FF14);
-    if (r >= 0.75) return const Color(0xFF8BC34A);
-    if (r >= 0.5) return const Color(0xFFFFD700);
-    if (r >= 0.25) return Colors.orange;
+    if (r >= 1.0) { return const Color(0xFF39FF14); }
+    if (r >= 0.75) { return const Color(0xFF8BC34A); }
+    if (r >= 0.5) { return const Color(0xFFFFD700); }
+    if (r >= 0.25) { return Colors.orange; }
     return const Color(0xFF9E9E9E);
   }
 

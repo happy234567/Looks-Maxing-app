@@ -274,24 +274,29 @@ class _FoodLogPageState extends State<FoodLogPage>
 
   Future<void> _refreshAll() async {
     if (_uid == null) {
-      setState(() => _hasPlan = false);
+      if (mounted) setState(() => _hasPlan = false);
       return;
     }
     final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final c = p.getString(_dk('calories'));
     if (c != null && c.isNotEmpty) {
       _setLocal(p);
     } else {
       final cloud = await _loadPlanCloud();
+      if (!mounted) return;
       if (cloud != null) {
         await _cacheLocally(p, cloud);
+        if (!mounted) return;
         _setLocal(p);
       } else {
-        setState(() => _hasPlan = false);
+        if (mounted) setState(() => _hasPlan = false);
       }
     }
     await _syncFoodLogsFromFirestore();
+    if (!mounted) return;
     await _loadFoods();
+    if (!mounted) return;
     await _loadLast7DaysStats();
   }
 
@@ -373,6 +378,7 @@ class _FoodLogPageState extends State<FoodLogPage>
   }
 
   void _setLocal(SharedPreferences p) {
+    if (!mounted) return;
     setState(() {
       _hasPlan = true;
       _cal = int.tryParse(p.getString(_dk('calories')) ?? '') ?? 0;
@@ -401,6 +407,7 @@ class _FoodLogPageState extends State<FoodLogPage>
 
   Future<void> _loadFoods() async {
     final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final j = p.getString(_flk(_selectedDate));
     if (j != null && j.isNotEmpty) {
       try {
@@ -414,15 +421,30 @@ class _FoodLogPageState extends State<FoodLogPage>
           tf += (entry['totalFats'] as num?)?.toDouble() ?? 0;
           tfi += (entry['totalFiber'] as num?)?.toDouble() ?? 0;
         }
-        setState(() {
-          _logEntries = list;
-          _tCal = tc;
-          _tPro = tp.round();
-          _tCarb = tca.round();
-          _tFat = tf.round();
-          _tFib = tfi.round();
-        });
+        if (mounted) {
+          setState(() {
+            _logEntries = list;
+            _tCal = tc;
+            _tPro = tp.round();
+            _tCarb = tca.round();
+            _tFat = tf.round();
+            _tFib = tfi.round();
+          });
+        }
       } catch (_) {
+        if (mounted) {
+          setState(() {
+            _logEntries = [];
+            _tCal = 0;
+            _tPro = 0;
+            _tCarb = 0;
+            _tFat = 0;
+            _tFib = 0;
+          });
+        }
+      }
+    } else {
+      if (mounted) {
         setState(() {
           _logEntries = [];
           _tCal = 0;
@@ -432,15 +454,6 @@ class _FoodLogPageState extends State<FoodLogPage>
           _tFib = 0;
         });
       }
-    } else {
-      setState(() {
-        _logEntries = [];
-        _tCal = 0;
-        _tPro = 0;
-        _tCarb = 0;
-        _tFat = 0;
-        _tFib = 0;
-      });
     }
   }
 
@@ -1131,6 +1144,7 @@ class _FoodLogPageState extends State<FoodLogPage>
 
   Future<void> _loadLast7DaysStats() async {
     final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final now = DateTime.now();
     int tracked = 0;
     int goalsMet = 0;
@@ -1186,11 +1200,13 @@ class _FoodLogPageState extends State<FoodLogPage>
       };
     }
 
-    setState(() {
-      _last7DaysData = tempStats;
-      _streakDays = tracked;
-      _goalsMetCount = goalsMet;
-    });
+    if (mounted) {
+      setState(() {
+        _last7DaysData = tempStats;
+        _streakDays = tracked;
+        _goalsMetCount = goalsMet;
+      });
+    }
   }
 
   Widget _horizontalCalendarStrip() {
@@ -2723,7 +2739,7 @@ class _FoodScanLoadingScreenState extends State<FoodScanLoadingScreen> {
   }
 
   void _showErrorAndPop(String message) {
-    if (!context.mounted) return;
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -2840,6 +2856,7 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
     if (user == null) return;
     final uid = user.uid;
     final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
 
     final cKey = 'diet_${uid}_calories';
     final pKey = 'diet_${uid}_protein';
@@ -2870,13 +2887,15 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
           tf += (entry['totalFats'] as num?)?.toDouble() ?? 0;
           tfi += (entry['totalFiber'] as num?)?.toDouble() ?? 0;
         }
-        setState(() {
-          _todayCal = tc;
-          _todayPro = tp;
-          _todayCarb = tca;
-          _todayFat = tf;
-          _todayFib = tfi;
-        });
+        if (mounted) {
+          setState(() {
+            _todayCal = tc;
+            _todayPro = tp;
+            _todayCarb = tca;
+            _todayFat = tf;
+            _todayFib = tfi;
+          });
+        }
       } catch (_) {}
     }
   }
@@ -3601,26 +3620,24 @@ class _FoodScanResultScreenState extends State<FoodScanResultScreen> {
                             newEntryLocal: newEntryLocal,
                           );
 
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  "✓ Saved to ${widget.mealType.substring(0, 1).toUpperCase() + widget.mealType.substring(1)}",
-                                ),
-                                backgroundColor: accentColor,
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                "✓ Saved to ${widget.mealType.substring(0, 1).toUpperCase() + widget.mealType.substring(1)}",
                               ),
-                            );
-                            Navigator.pop(context, true);
-                          }
+                              backgroundColor: accentColor,
+                            ),
+                          );
+                          Navigator.pop(context, true);
                         } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text("Failed to save: $e"),
-                                backgroundColor: Colors.redAccent,
-                              ),
-                            );
-                          }
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text("Failed to save: $e"),
+                              backgroundColor: Colors.redAccent,
+                            ),
+                          );
                         } finally {
                           if (mounted) {
                             setState(() {
@@ -3702,6 +3719,7 @@ class _ConfirmProfileScreenState extends State<_ConfirmProfileScreen> {
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _name = p.getString('username') ?? '';
       _gender = p.getString('gender') ?? '';
