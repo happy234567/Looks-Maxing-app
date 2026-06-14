@@ -15,9 +15,10 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 ///
 /// Tab indices (after Progress tab removal):
 ///   0 = Face Rating (includes progress)
-///   1 = Lock In
-///   2 = Guide
-///   3 = Shop
+///   1 = Food Log
+///   2 = Lock In
+///   3 = Guide
+///   4 = Shop
 void handleNotificationNavigation(String? screen) {
   if (screen == null) return;
   final nav = navigatorKey.currentState;
@@ -28,17 +29,19 @@ void handleNotificationNavigation(String? screen) {
       nav.pushNamedAndRemoveUntil('/main', (r) => false, arguments: 0);
       break;
     case 'progress':
-      // Progress is now merged into Face Rating (tab 0)
       nav.pushNamedAndRemoveUntil('/main', (r) => false, arguments: 0);
       break;
-    case 'lockin':
+    case 'food_log':
       nav.pushNamedAndRemoveUntil('/main', (r) => false, arguments: 1);
       break;
-    case 'guide':
+    case 'lockin':
       nav.pushNamedAndRemoveUntil('/main', (r) => false, arguments: 2);
       break;
-    case 'shop':
+    case 'guide':
       nav.pushNamedAndRemoveUntil('/main', (r) => false, arguments: 3);
+      break;
+    case 'shop':
+      nav.pushNamedAndRemoveUntil('/main', (r) => false, arguments: 4);
       break;
     default:
       // Unknown screen — just open app to home

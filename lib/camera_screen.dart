@@ -14,6 +14,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'ad_service.dart';
 import 'main.dart' show logAnalyticsEvent;
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 /// Strips the "Exception: " prefix from error messages for cleaner UX.
 String _cleanErrorMessage(dynamic error) {
@@ -261,117 +262,148 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
+  Future<File> _compressPhoto(File file) async {
+    try {
+      final String originalPath = file.path;
+      final String outPath = '${originalPath}_compressed.jpg';
+      final compressedFile = await FlutterImageCompress.compressAndGetFile(
+        originalPath,
+        outPath,
+        quality: 70,
+        minWidth: 1024,
+        minHeight: 1024,
+        keepExif: false,
+      );
+      if (compressedFile != null) {
+        debugPrint('[Camera] Compressed photo from ${file.lengthSync()} to ${File(compressedFile.path).lengthSync()} bytes');
+        return File(compressedFile.path);
+      }
+    } catch (e) {
+      debugPrint('[Camera] Compression failed: $e. Using original photo.');
+    }
+    return file;
+  }
+
   Future<Map<String, dynamic>> _sendScanRequest(String idToken) async {
     const String backendUrl =
         'https://level-maxing-backend.onrender.com/analyze';
 
-    http.MultipartRequest buildRequest() {
-      var request = http.MultipartRequest('POST', Uri.parse(backendUrl));
-      request.headers['Authorization'] = 'Bearer $idToken';
-      return request;
-    }
+    int maxAttempts = 3;
+    int attemptDelayMs = 1500;
 
-    var request = buildRequest();
-
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        'front',
-        _frontImage!.path,
-        contentType: MediaType('image', 'jpeg'),
-      ),
-    );
-
-    if (_sideImage != null) {
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'side',
-          _sideImage!.path,
-          contentType: MediaType('image', 'jpeg'),
-        ),
-      );
-    }
-
-    http.StreamedResponse response;
-    try {
-      response = await request.send().timeout(
-        const Duration(seconds: 180),
-        onTimeout: () {
-          throw TimeoutException('Server took too long to respond.');
-        },
-      );
-    } on SocketException {
-      throw Exception(
-        'No internet connection. Please check your network and try again.',
-      );
-    } on TimeoutException {
-      throw Exception(
-        'Server took too long to respond. Please try again in a few minutes.',
-      );
-    }
-
-    var responseBody = await response.stream.bytesToString();
-
-    if (response.statusCode == 401 || response.statusCode == 403) {
-      throw _AuthException(
-        'Token rejected by server (HTTP ${response.statusCode})',
-      );
-    }
-
-    if (response.statusCode == 429) {
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        final body = jsonDecode(responseBody) as Map<String, dynamic>;
-        throw Exception(
-          body['error'] ?? 'Upload limit reached. Please try again later.',
+        final request = http.MultipartRequest('POST', Uri.parse(backendUrl));
+        request.headers['Authorization'] = 'Bearer $idToken';
+
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'front',
+            _frontImage!.path,
+            contentType: MediaType('image', 'jpeg'),
+          ),
         );
-      } catch (e) {
-        if (e is Exception && e.toString().contains('Upload limit')) rethrow;
-        throw Exception('Upload limit reached. Please try again later.');
-      }
-    }
 
-    if (response.statusCode == 500) {
-      try {
-        final body = jsonDecode(responseBody) as Map<String, dynamic>;
-        final serverError = body['error'] as String? ?? '';
-        if (serverError.contains('face') ||
-            serverError.contains('image') ||
-            serverError.contains('JSON')) {
-          throw Exception(
-            'Could not analyze your photo. Please ensure your face is clearly visible and try again.',
+        if (_sideImage != null) {
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              'side',
+              _sideImage!.path,
+              contentType: MediaType('image', 'jpeg'),
+            ),
           );
         }
+
+        final response = await request.send().timeout(
+          const Duration(seconds: 180),
+          onTimeout: () {
+            throw TimeoutException('Server took too long to respond.');
+          },
+        );
+
+        final responseBody = await response.stream.bytesToString();
+
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          throw _AuthException(
+            'Token rejected by server (HTTP ${response.statusCode})',
+          );
+        }
+
+        if (response.statusCode == 429) {
+          try {
+            final body = jsonDecode(responseBody) as Map<String, dynamic>;
+            throw Exception(
+              body['error'] ?? 'Upload limit reached. Please try again later.',
+            );
+          } catch (e) {
+            if (e is Exception && e.toString().contains('Upload limit')) rethrow;
+            throw Exception('Upload limit reached. Please try again later.');
+          }
+        }
+
+        if (response.statusCode == 500) {
+          try {
+            final body = jsonDecode(responseBody) as Map<String, dynamic>;
+            final serverError = body['error'] as String? ?? '';
+            if (serverError.contains('face') ||
+                serverError.contains('image') ||
+                serverError.contains('JSON')) {
+              throw Exception(
+                'Could not analyze your photo. Please ensure your face is clearly visible and try again.',
+              );
+            }
+          } catch (e) {
+            if (e is Exception && e.toString().contains('Could not analyze')) {
+              rethrow;
+            }
+          }
+          if (attempt < maxAttempts) {
+            debugPrint('[Network] 500 Server Error on attempt $attempt, retrying...');
+            throw SocketException('Server error, retrying...');
+          }
+          throw Exception('Server error. Please try again later.');
+        }
+
+        if (response.statusCode == 400) {
+          try {
+            final body = jsonDecode(responseBody) as Map<String, dynamic>;
+            throw Exception(
+              body['error'] ??
+                  'Please upload a clear, well-lit photo of your face.',
+            );
+          } catch (e) {
+            if (e is Exception) rethrow;
+          }
+          throw Exception('Please upload a clear, well-lit photo of your face.');
+        }
+
+        if (response.statusCode != 200) {
+          if (attempt < maxAttempts) {
+            debugPrint('[Network] HTTP ${response.statusCode} on attempt $attempt, retrying...');
+            throw SocketException('Unsuccessful status, retrying...');
+          }
+          throw Exception(
+            'Server error (HTTP ${response.statusCode}). Please try again later.',
+          );
+        }
+
+        try {
+          return jsonDecode(responseBody) as Map<String, dynamic>;
+        } catch (_) {
+          throw Exception('Invalid response from server. Please try again.');
+        }
       } catch (e) {
-        if (e is Exception && e.toString().contains('Could not analyze')) {
+        final isTransient = e is SocketException || e is TimeoutException || e is http.ClientException;
+        if (isTransient && attempt < maxAttempts) {
+          debugPrint('[Network] Attempt $attempt failed: $e. Retrying in ${attemptDelayMs}ms...');
+          await Future.delayed(Duration(milliseconds: attemptDelayMs));
+          attemptDelayMs *= 2;
+        } else {
           rethrow;
         }
       }
-      throw Exception('Server error. Please try again later.');
     }
-
-    if (response.statusCode == 400) {
-      try {
-        final body = jsonDecode(responseBody) as Map<String, dynamic>;
-        throw Exception(
-          body['error'] ??
-              'Please upload a clear, well-lit photo of your face.',
-        );
-      } catch (e) {
-        if (e is Exception) rethrow;
-      }
-      throw Exception('Please upload a clear, well-lit photo of your face.');
-    }
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Server error (HTTP ${response.statusCode}). Please try again later.',
-      );
-    }
-
-    try {
-      return jsonDecode(responseBody) as Map<String, dynamic>;
-    } catch (_) {
-      throw Exception('Invalid response from server. Please try again.');
-    }
+    throw Exception('Failed to communicate with the server after retries.');
   }
 
   Future<void> _analyzePhotos() async {
@@ -402,6 +434,16 @@ class _CameraScreenState extends State<CameraScreen>
       _errorMessage = null;
     });
     _startScanAnimation();
+
+    // Compress photos before uploading
+    try {
+      _frontImage = await _compressPhoto(_frontImage!);
+      if (_sideImage != null) {
+        _sideImage = await _compressPhoto(_sideImage!);
+      }
+    } catch (e) {
+      debugPrint('Compression error (non-fatal): $e');
+    }
 
     // Kick off ad loading NOW so the ad is ready when the scan finishes.
     // With mediation this can take 3-5s — running it in parallel with the
@@ -887,9 +929,12 @@ class _CameraScreenState extends State<CameraScreen>
               // Photo preview
               Expanded(
                 child: _currentImage != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: Image.file(_currentImage!, fit: BoxFit.cover),
+                    ? Hero(
+                        tag: _currentStep == 0 ? 'scan_front_photo' : 'scan_side_photo',
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Image.file(_currentImage!, fit: BoxFit.cover),
+                        ),
                       )
                     : Container(
                         decoration: BoxDecoration(

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import 'dart:math' as math;
+import 'package:url_launcher/url_launcher.dart';
 
 class ResultsScreen extends StatefulWidget {
   final Map<String, dynamic> scores;
@@ -57,6 +58,151 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
     if (s >= 60) return 'Above Average';
     if (s >= 50) return 'Average';
     return 'Below Average';
+  }
+
+  Future<void> _showRateDialog(BuildContext context) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161616),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 24,
+                spreadRadius: 4,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700).withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFFFFD700).withValues(alpha: 0.2),
+                    width: 1.5,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.star_rounded,
+                  color: Color(0xFFFFD700),
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                "Rate Level Maxing",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  5,
+                  (index) => const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 2),
+                    child: Icon(
+                      Icons.star_rounded,
+                      color: Color(0xFFFFD700),
+                      size: 28,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                "If you find our AI analysis and insights helpful, please take a moment to rate us on the Play Store. It helps us grow and improve!",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        Navigator.pop(context);
+                      },
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        "Later",
+                        style: TextStyle(
+                          color: Colors.white38,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        Navigator.pop(dialogContext);
+                        Navigator.pop(context);
+                        final Uri url = Uri.parse(
+                          'https://play.google.com/store/apps/details?id=com.levelmaxing.app',
+                        );
+                        try {
+                          await launchUrl(url, mode: LaunchMode.externalApplication);
+                        } catch (e) {
+                          debugPrint("Could not launch Play Store URL: $e");
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFD700),
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        "Rate Now",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _openFs(List<String> p, int i) => Navigator.push(context,
@@ -145,7 +291,18 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
               math.max(24.0, MediaQuery.of(context).padding.bottom + 16.0)
             ),
             child: SizedBox(width: double.infinity, child: ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context), // Safely returns to Home tab
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                if (!context.mounted) return;
+                final rateShown = prefs.getBool('first_scan_rate_shown') ?? false;
+                if (!rateShown) {
+                  await prefs.setBool('first_scan_rate_shown', true);
+                  if (!context.mounted) return;
+                  _showRateDialog(context);
+                } else {
+                  Navigator.pop(context);
+                }
+              },
               icon: const Icon(Icons.check, size: 18),
               label: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               style: ElevatedButton.styleFrom(
@@ -273,20 +430,36 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
           PageView.builder(
             controller: _photoCtrl, itemCount: photos.length,
             onPageChanged: (i) => setState(() => _curPhoto = i),
-            itemBuilder: (_, i) => GestureDetector(
-              onTap: () => _openFs(photos, i),
-              child: Stack(fit: StackFit.expand, children: [
-                photos[i].startsWith('http')
-                    ? CachedNetworkImage(imageUrl: photos[i], fit: BoxFit.cover,
-                        placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Color(0xFFFFD700))),
-                        errorWidget: (context, url, error) => const Center(child: Icon(Icons.error, color: Colors.white54, size: 40)))
-                    : Image.file(File(photos[i]), fit: BoxFit.cover),
-                Positioned(bottom: 0, left: 0, right: 0, height: 60,
-                  child: Container(decoration: BoxDecoration(gradient: LinearGradient(
-                    colors: [Colors.transparent, Colors.black.withValues(alpha:0.55)],
-                    begin: Alignment.topCenter, end: Alignment.bottomCenter)))),
-              ]),
-            ),
+            itemBuilder: (_, i) {
+              final childWidget = photos[i].startsWith('http')
+                  ? CachedNetworkImage(imageUrl: photos[i], fit: BoxFit.cover,
+                      placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Color(0xFFFFD700))),
+                      errorWidget: (context, url, error) => const Center(child: Icon(Icons.error, color: Colors.white54, size: 40)))
+                  : Image.file(File(photos[i]), fit: BoxFit.cover);
+
+              final heroTag = i == 0
+                  ? 'scan_front_photo'
+                  : (i == 1 ? 'scan_side_photo' : null);
+
+              return GestureDetector(
+                onTap: () => _openFs(photos, i),
+                child: Stack(fit: StackFit.expand, children: [
+                  heroTag != null
+                      ? Hero(
+                          tag: heroTag,
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: childWidget,
+                          ),
+                        )
+                      : childWidget,
+                  Positioned(bottom: 0, left: 0, right: 0, height: 60,
+                    child: Container(decoration: BoxDecoration(gradient: LinearGradient(
+                      colors: [Colors.transparent, Colors.black.withValues(alpha:0.55)],
+                      begin: Alignment.topCenter, end: Alignment.bottomCenter)))),
+                ]),
+              );
+            },
           ),
           Positioned(bottom: 12, left: 12, child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

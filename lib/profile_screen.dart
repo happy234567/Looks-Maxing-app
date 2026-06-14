@@ -11,6 +11,7 @@ import 'notification_service.dart';
 import 'deleted_users_service.dart';
 import 'scan_cooldown_service.dart';
 import 'lock_in_notification_service.dart';
+import 'food_log_notification_service.dart';
 import 'ad_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -416,6 +417,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       await Future.wait([
         safe(LockInNotificationService.cancelAll()),
+        safe(FoodLogNotificationService.cancelAll()),
         safe(NotificationService.removeTokenOnLogout()),
         safe(ScanCooldownService.cancelNotification()),
         safe(ScanCooldownService.clearLocalCache()),
@@ -520,6 +522,7 @@ class _ProfilePageState extends State<ProfilePage> {
   try {
     await DeletedUsersService.softDeleteAccount();
     try { await LockInNotificationService.cancelAll(); } catch (_) {}
+    try { await FoodLogNotificationService.cancelAll(); } catch (_) {}
     try { await ScanCooldownService.cancelNotification(); } catch (_) {}
     try { await NotificationService.removeTokenOnLogout(); } catch (_) {}
   } catch (e) {

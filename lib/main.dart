@@ -18,8 +18,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'billing_service.dart';
 import 'notification_service.dart';
 import 'lock_in_notification_service.dart'; // ← NEW
+import 'food_log_notification_service.dart';
 import 'scan_cooldown_service.dart';
 import 'deleted_users_service.dart';
+import 'force_update_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:ui';
 import 'dart:async';
@@ -155,6 +158,43 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     final user = FirebaseAuth.instance.currentUser;
 
+    // Force Update Check
+    String? minVersion;
+    String? updateUrl;
+    try {
+      final configDoc = await FirebaseFirestore.instance
+          .collection('config')
+          .doc('app_config')
+          .get()
+          .timeout(const Duration(seconds: 4));
+      if (configDoc.exists) {
+        final data = configDoc.data();
+        if (data != null) {
+          minVersion = data['min_version'] as String?;
+          updateUrl = data['update_url'] as String?;
+        }
+      }
+    } catch (e) {
+      debugPrint("Failed to fetch version config: $e");
+    }
+
+    String currentVersion = "1.0.0";
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      currentVersion = packageInfo.version;
+    } catch (_) {}
+
+    if (minVersion != null && _isVersionLessThan(currentVersion, minVersion)) {
+      if (mounted) {
+        runApp(MyApp(
+          initialScreen: ForceUpdateScreen(
+            updateUrl: updateUrl ?? "https://play.google.com/store/apps/details?id=com.levelmaxing.app",
+          ),
+        ));
+      }
+      return;
+    }
+
     // 3. Kick off all other initializations concurrently in the background,
     // so we can boot the UI and resolve the initial screen instantly.
     Future.microtask(() async {
@@ -187,6 +227,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         await Future.wait([
           safe(LockInNotificationService.initialize()),
           safe(NotificationService.initialize()),
+          safe(FoodLogNotificationService.initialize()),
           safe(ScanCooldownService.initialize()),
           safe(BillingService().initialize()),
           safe(AdService().initialize()),
@@ -275,6 +316,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           prefs.getString('username') != '';
       return hasUsername ? const MainNavigation() : const LoginScreen();
     }
+  }
+
+  bool _isVersionLessThan(String current, String min) {
+    final currentParts = current.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final minParts = min.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    for (int i = 0; i < 3; i++) {
+      final curVal = i < currentParts.length ? currentParts[i] : 0;
+      final minVal = i < minParts.length ? minParts[i] : 0;
+      if (curVal < minVal) return true;
+      if (curVal > minVal) return false;
+    }
+    return false;
   }
 
   @override
@@ -417,6 +470,8 @@ class MyApp extends StatelessWidget {
   }
 }
 
+final ValueNotifier<int> mainTabNotifier = ValueNotifier<int>(0);
+
 class MainNavigation extends StatefulWidget {
   final int initialTab;
   const MainNavigation({super.key, this.initialTab = 0});
@@ -429,11 +484,27 @@ class _MainNavigationState extends State<MainNavigation> {
   late int _currentIndex;
   static const _channel = MethodChannel('com.levelmaxing.app/widget');
  
+  void _onTabChanged() {
+    if (mounted) {
+      setState(() {
+        _currentIndex = mainTabNotifier.value;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialTab;
+    mainTabNotifier.value = widget.initialTab;
+    mainTabNotifier.addListener(_onTabChanged);
     _initWidgetChannel();
+  }
+
+  @override
+  void dispose() {
+    mainTabNotifier.removeListener(_onTabChanged);
+    super.dispose();
   }
 
   void _initWidgetChannel() {
@@ -491,7 +562,10 @@ class _MainNavigationState extends State<MainNavigation> {
         selectedItemColor: const Color(0xFFFFD700),
         unselectedItemColor: Colors.white38,
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: (index) {
+          mainTabNotifier.value = index;
+          setState(() => _currentIndex = index);
+        },
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
@@ -1215,6 +1289,7 @@ class _FaceRatingPageState extends State<FaceRatingPage>
                           MaterialPageRoute(builder: (_) => const CameraScreen()),
                         );
                         await _refreshCooldown();
+                        _refreshProgress();
                       }
                     : null,
                 style: ElevatedButton.styleFrom(

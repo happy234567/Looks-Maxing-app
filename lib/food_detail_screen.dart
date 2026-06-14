@@ -1,15 +1,342 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'nutrition_db_helper.dart';
+import 'food_log_page.dart';
 
-class FoodDetailScreen extends StatelessWidget {
-  final List<dynamic> foods;
-  final String? imagePath;
+class FoodDetailScreen extends StatefulWidget {
+  final Map<String, dynamic> entry;
+  final DateTime selectedDate;
 
   const FoodDetailScreen({
     super.key,
-    required this.foods,
-    this.imagePath,
+    required this.entry,
+    required this.selectedDate,
   });
+
+  @override
+  State<FoodDetailScreen> createState() => _FoodDetailScreenState();
+}
+
+class _FoodDetailScreenState extends State<FoodDetailScreen> {
+  late Map<String, dynamic> _entry;
+  late List<dynamic> _foods;
+  late String _description;
+  late TextEditingController _descriptionController;
+  bool _isRewriting = false;
+  bool _hasChanges = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _entry = widget.entry;
+    _foods = _entry['foods'] as List? ?? [];
+    _description = _entry['description'] as String? ?? '';
+    _descriptionController = TextEditingController(text: _description);
+  }
+
+  @override
+  void dispose() {
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  bool _isToday(DateTime date) {
+    final now = DateTime.now();
+    return date.year == now.year && date.month == now.month && date.day == now.day;
+  }
+
+  Future<File> _getImageFile(String path) async {
+    if (path.startsWith('http')) {
+      final response = await http.get(Uri.parse(path));
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/temp_food_image_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await tempFile.writeAsBytes(response.bodyBytes);
+      return tempFile;
+    } else {
+      final file = File(path);
+      if (await file.exists()) {
+        return file;
+      }
+      throw Exception("Food image file not found locally.");
+    }
+  }
+
+  Future<void> _rewriteMealWithAI(String newDesc) async {
+    setState(() {
+      _isRewriting = true;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("Please log in to use AI rewrite.");
+      final token = await user.getIdToken(true);
+      if (token == null) throw Exception("Authentication failed.");
+
+      final imagePath = _entry['imagePath'] as String?;
+      if (imagePath == null || imagePath.isEmpty) {
+        throw Exception("Cannot rewrite: food image is required.");
+      }
+
+      final imageFile = await _getImageFile(imagePath);
+
+      final uri = Uri.parse('https://level-maxing-backend.onrender.com/food-analyze');
+      final request = http.MultipartRequest('POST', uri);
+      request.headers['Authorization'] = 'Bearer $token';
+      request.fields['mealType'] = _entry['mealType'] ?? 'snack';
+      request.fields['description'] = newDesc;
+      request.fields['correction'] = newDesc;
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'frontImage',
+          imageFile.path,
+          contentType: MediaType('image', 'jpeg'),
+        ),
+      );
+
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 120));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode != 200) {
+        try {
+          final errData = jsonDecode(response.body);
+          throw Exception(errData['error'] as String? ?? 'AI analysis failed.');
+        } catch (_) {
+          throw Exception('Server error (${response.statusCode})');
+        }
+      }
+
+      final data = jsonDecode(response.body);
+      if (data['success'] != true) {
+        throw Exception(data['error'] as String? ?? 'Analysis was unsuccessful.');
+      }
+
+      final List<dynamic> foodsList = data['foods'] as List? ?? [];
+      if (foodsList.isEmpty) {
+        throw Exception('No food detected. Please check your description.');
+      }
+
+      final List<Map<String, dynamic>> updatedFoods = [];
+      double mealPro = 0, mealCarb = 0, mealFat = 0, mealFib = 0;
+      int mealCal = 0;
+
+      for (final f in foodsList) {
+        final name = f['name'] as String? ?? '';
+        final grams = (f['estimated_grams'] as num?)?.toDouble() ?? 100.0;
+        final confStr = f['confidence'] as String? ?? 'medium';
+        double defaultConf = 0.8;
+        if (confStr == 'high') defaultConf = 1.0;
+        if (confStr == 'low') defaultConf = 0.5;
+
+        final cal = f['calories'] as num?;
+        final pro = f['protein'] as num?;
+        final carb = f['carbs'] as num?;
+        final fat = f['fats'] as num?;
+        final fib = f['fiber'] as num?;
+
+        FoodNutritionResult finalRes;
+
+        if (cal != null || pro != null || carb != null || fat != null) {
+          finalRes = FoodNutritionResult(
+            foodName: name,
+            grams: grams,
+            calories: cal?.toInt() ?? 0,
+            protein: pro?.toDouble() ?? 0.0,
+            carbs: carb?.toDouble() ?? 0.0,
+            fats: fat?.toDouble() ?? 0.0,
+            fiber: fib?.toDouble() ?? 0.0,
+            isEstimate: false,
+            confidence: defaultConf,
+          );
+        } else {
+          var lookupResult = await NutritionDB.lookup(name, grams);
+          lookupResult ??= NutritionDB.getFallbackEstimate(name, grams);
+          finalRes = lookupResult;
+        }
+
+        updatedFoods.add(finalRes.toMap());
+        mealCal += finalRes.calories;
+        mealPro += finalRes.protein;
+        mealCarb += finalRes.carbs;
+        mealFat += finalRes.fats;
+        mealFib += finalRes.fiber;
+      }
+
+      final p = await SharedPreferences.getInstance();
+      final todayStr = widget.selectedDate.toIso8601String().substring(0, 10);
+      final logKey = 'food_log_${user.uid}_$todayStr';
+      final logJson = p.getString(logKey);
+
+      if (logJson != null && logJson.isNotEmpty) {
+        final List<Map<String, dynamic>> logList = (jsonDecode(logJson) as List)
+            .cast<Map<String, dynamic>>();
+
+        int entryIndex = -1;
+        for (int i = 0; i < logList.length; i++) {
+          if (logList[i]['id'] == _entry['id'] || logList[i]['timestamp'] == _entry['timestamp']) {
+            entryIndex = i;
+            break;
+          }
+        }
+
+        if (entryIndex != -1) {
+          final updatedEntry = Map<String, dynamic>.from(logList[entryIndex]);
+          updatedEntry['foods'] = updatedFoods;
+          updatedEntry['totalCalories'] = mealCal;
+          updatedEntry['totalProtein'] = mealPro;
+          updatedEntry['totalCarbs'] = mealCarb;
+          updatedEntry['totalFats'] = mealFat;
+          updatedEntry['totalFiber'] = mealFib;
+          updatedEntry['description'] = newDesc;
+          updatedEntry['syncStatus'] = 'pending';
+
+          logList[entryIndex] = updatedEntry;
+          await p.setString(logKey, jsonEncode(logList));
+
+          setState(() {
+            _entry = updatedEntry;
+            _foods = updatedFoods;
+            _description = newDesc;
+            _hasChanges = true;
+          });
+
+          // Trigger background update to Firestore
+          _runBackgroundUpdate(
+            entryId: _entry['id'] ?? '',
+            timestamp: _entry['timestamp'] as num,
+            uid: user.uid,
+            todayStr: todayStr,
+            logKey: logKey,
+            updatedEntry: {
+              'id': _entry['id'],
+              'syncStatus': 'pending',
+              'mealType': _entry['mealType'],
+              'foods': updatedFoods,
+              'totalCalories': mealCal,
+              'totalProtein': mealPro,
+              'totalCarbs': mealCarb,
+              'totalFats': mealFat,
+              'totalFiber': mealFib,
+              'imagePath': _entry['imagePath'],
+              'timestamp': _entry['timestamp'],
+              'description': newDesc,
+            },
+          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("✓ Saved & updated successfully with AI!"),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to rewrite: ${e.toString().replaceFirst('Exception: ', '')}"),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRewriting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _runBackgroundUpdate({
+    required String entryId,
+    required num timestamp,
+    required String uid,
+    required String todayStr,
+    required String logKey,
+    required Map<String, dynamic> updatedEntry,
+  }) async {
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('food_logs')
+          .where('timestamp', isEqualTo: timestamp)
+          .get();
+
+      if (query.docs.isNotEmpty) {
+        for (var doc in query.docs) {
+          await doc.reference.update({
+            ...updatedEntry,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+      } else {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('food_logs')
+            .add({
+              ...updatedEntry,
+              'createdAt': FieldValue.serverTimestamp(),
+              'expiresAt': DateTime.now().add(const Duration(days: 15)),
+            });
+      }
+
+      await _markEntrySyncSuccess(logKey, entryId, timestamp);
+    } catch (e) {
+      debugPrint('Failed to update Firestore food log: $e');
+      await _markEntrySyncFailed(logKey, entryId, timestamp);
+    }
+  }
+
+  Future<void> _markEntrySyncSuccess(String logKey, String entryId, num timestamp) async {
+    final p = await SharedPreferences.getInstance();
+    final logJson = p.getString(logKey);
+    if (logJson != null && logJson.isNotEmpty) {
+      try {
+        final List<Map<String, dynamic>> logList = (jsonDecode(logJson) as List)
+            .cast<Map<String, dynamic>>();
+        for (var entry in logList) {
+          if (entry['id'] == entryId || entry['timestamp'] == timestamp) {
+            entry['syncStatus'] = 'synced';
+            break;
+          }
+        }
+        await p.setString(logKey, jsonEncode(logList));
+        foodLogUpdateNotifier.value++;
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _markEntrySyncFailed(String logKey, String entryId, num timestamp) async {
+    final p = await SharedPreferences.getInstance();
+    final logJson = p.getString(logKey);
+    if (logJson != null && logJson.isNotEmpty) {
+      try {
+        final List<Map<String, dynamic>> logList = (jsonDecode(logJson) as List)
+            .cast<Map<String, dynamic>>();
+        for (var entry in logList) {
+          if (entry['id'] == entryId || entry['timestamp'] == timestamp) {
+            entry['syncStatus'] = 'failed';
+            break;
+          }
+        }
+        await p.setString(logKey, jsonEncode(logList));
+        foodLogUpdateNotifier.value++;
+      } catch (_) {}
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +348,7 @@ class FoodDetailScreen extends StatelessWidget {
     double totalFiber = 0;
     int totalGrams = 0;
 
-    for (var f in foods) {
+    for (var f in _foods) {
       totalCalories += f['cal'] as num? ?? 0;
       totalProtein += f['pro'] as num? ?? 0;
       totalCarbs += f['carb'] as num? ?? 0;
@@ -40,7 +367,8 @@ class FoodDetailScreen extends StatelessWidget {
     double carbsPct = macroTotalKcal > 0 ? (carbsKcal / macroTotalKcal) : 0;
     double fatsPct = macroTotalKcal > 0 ? (fatsKcal / macroTotalKcal) : 0;
 
-    final hasImage = imagePath != null && imagePath!.isNotEmpty;
+    final imagePath = _entry['imagePath'] as String?;
+    final hasImage = imagePath != null && imagePath.isNotEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
@@ -59,7 +387,7 @@ class FoodDetailScreen extends StatelessWidget {
                 backgroundColor: Colors.black.withValues(alpha: 0.5),
                 child: IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFFFFD700)),
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(context, _hasChanges),
                 ),
               ),
             ),
@@ -73,14 +401,14 @@ class FoodDetailScreen extends StatelessWidget {
                 children: [
                   if (hasImage) ...[
                     Hero(
-                      tag: imagePath!,
-                      child: imagePath!.startsWith('http')
+                      tag: imagePath,
+                      child: imagePath.startsWith('http')
                           ? Image.network(
-                              imagePath!,
+                              imagePath,
                               fit: BoxFit.cover,
                             )
                           : Image.file(
-                              File(imagePath!),
+                              File(imagePath),
                               fit: BoxFit.cover,
                             ),
                     ),
@@ -148,8 +476,8 @@ class FoodDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          foods.length == 1 
-                              ? (foods.first['name'] as String? ?? 'Food Details')
+                          _foods.length == 1 
+                              ? (_foods.first['name'] as String? ?? 'Food Details')
                               : "Meal Breakdown",
                           style: const TextStyle(
                             color: Colors.white,
@@ -201,8 +529,12 @@ class FoodDetailScreen extends StatelessWidget {
                   _buildMacrosGrid(totalProtein, totalCarbs, totalFats, totalFiber),
                   const SizedBox(height: 32),
 
+                  // AI Description & Rewrite Section
+                  _buildAIDescriptionSection(),
+                  const SizedBox(height: 32),
+
                   // Items List Section
-                  if (foods.length > 1) ...[
+                  if (_foods.length > 1) ...[
                     const Text(
                       "ITEMS IN THIS MEAL",
                       style: TextStyle(
@@ -213,8 +545,8 @@ class FoodDetailScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ...foods.map((f) => _buildIndividualFoodCard(f)),
-                  ] else if (foods.isNotEmpty) ...[
+                    ..._foods.map((f) => _buildIndividualFoodCard(f)),
+                  ] else if (_foods.isNotEmpty) ...[
                     const Text(
                       "AI ESTIMATION INSIGHTS",
                       style: TextStyle(
@@ -225,7 +557,7 @@ class FoodDetailScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _buildEstimationInsights(foods.first),
+                    _buildEstimationInsights(_foods.first),
                   ],
                 ],
               ),
@@ -658,7 +990,7 @@ class FoodDetailScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _insightRow(
             "Nutritional Standard", 
-            "USDA / Indian Food Composition Tables",
+            "USDA",
             textColor: Colors.white70,
           ),
         ],
@@ -701,6 +1033,178 @@ class FoodDetailScreen extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAIDescriptionSection() {
+    final bool isToday = _isToday(widget.selectedDate);
+
+    if (!isToday && _description.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161616),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFFFFD700).withValues(alpha: 0.1),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700).withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Color(0xFFFFD700),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "AI Description & Insights",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (isToday) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        "Edit this to recalculate calories & macros",
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (isToday) ...[
+            TextField(
+              controller: _descriptionController,
+              maxLines: 3,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: "e.g., Cooked rice 150g, chicken curry 100g, added 1 tsp olive oil",
+                hintStyle: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.2),
+                ),
+                filled: true,
+                fillColor: const Color(0xFF0F0F0F),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    width: 1,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    width: 1,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(
+                    color: Color(0xFFFFD700),
+                    width: 1,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.all(16),
+              ),
+              onChanged: (val) {
+                setState(() {});
+              },
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _isRewriting
+                    ? null
+                    : () {
+                        final newDesc = _descriptionController.text.trim();
+                        if (newDesc.isNotEmpty) {
+                          _rewriteMealWithAI(newDesc);
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFD700),
+                  foregroundColor: Colors.black,
+                  disabledBackgroundColor: Colors.white.withValues(alpha: 0.1),
+                  disabledForegroundColor: Colors.white30,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 0,
+                ),
+                child: _isRewriting
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
+                      )
+                    : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.auto_awesome, size: 18),
+                          SizedBox(width: 8),
+                          Text(
+                            "Rewrite & Recalculate with AI",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ] else ...[
+            Text(
+              _description,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

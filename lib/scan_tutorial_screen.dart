@@ -53,6 +53,14 @@ const List<_TutorialPage> _pages = [
     correctLabel: 'Full plate in frame',
     wrongLabel: 'Cropped — items missing',
   ),
+  _TutorialPage(
+    title: 'Scan the Barcode',
+    subtitle: 'For packaged items, scanning the barcode directly\ngives the most accurate nutritional info.',
+    correctAsset: 'assets/tutorial/barcode_correct.png',
+    wrongAsset: 'assets/tutorial/barcode_wrong.png',
+    correctLabel: 'Barcode scanned directly',
+    wrongLabel: 'Scanning package cover — inaccurate',
+  ),
 ];
 
 class ScanTutorialScreen extends StatefulWidget {
