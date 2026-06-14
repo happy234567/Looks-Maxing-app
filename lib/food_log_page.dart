@@ -2246,6 +2246,12 @@ class _FoodScanPreviewScreenState extends State<FoodScanPreviewScreen> {
   final TextEditingController _descController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    AdService().preloadFoodRewardedAd();
+  }
+
+  @override
   void dispose() {
     _descController.dispose();
     super.dispose();
